@@ -35,14 +35,10 @@ async def chlen_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user = update.effective_user
     user_id = user.id
 
-    # Format the user's name/username for the winner announcement
-    if user.username:
-        username = f"@{user.username}"
-    else:
-        # Fallback to first name and last name if username is not set
-        username = user.first_name
-        if user.last_name:
-            username += f" {user.last_name}"
+    # Format the user's name/surname (no username tagging)
+    username = user.first_name
+    if user.last_name:
+        username += f" {user.last_name}"
 
     logger.info(f"Received /chlen from user_id={user_id} ({username}) in chat_id={chat_id}")
 
@@ -91,10 +87,18 @@ async def chlen_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Announce end of game session if winner rolled
         if res.get("game_ended"):
             winner_name = res.get("winner_name")
+            turns = res.get("turns", 0)
+            new_record = res.get("new_record", False)
+
+            from game import pluralize_turns
+            turn_str = pluralize_turns(turns)
+            record_msg = " (Новый рекорд! 🚀)" if new_record else ""
+
             logger.info(f"Game session ended in chat_id={chat_id}. Winner: {winner_name}")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"Член - игра окончена! Победитель - {winner_name}"
+                text=f"Член - игра окончена! Победитель - {winner_name}\n"
+                     f"Игра длилась {turn_str}{record_msg}"
             )
 
 async def chlenboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

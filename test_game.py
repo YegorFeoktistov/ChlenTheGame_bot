@@ -225,6 +225,8 @@ class TestGameStateManager(unittest.TestCase):
         self.assertEqual(res["outcome"], "Я победил")
         self.assertTrue(res["game_ended"])
         self.assertEqual(res["winner_name"], "Winner")
+        self.assertEqual(res["turns"], 1)
+        self.assertTrue(res["new_record"])
 
     def test_session_cooldown(self):
         chat_id = 800

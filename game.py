@@ -4,6 +4,15 @@ import random
 import datetime
 import time
 
+def pluralize_turns(n):
+    """Pluralize turns/messages in Russian."""
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} ход"
+    elif 2 <= n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20):
+        return f"{n} хода"
+    else:
+        return f"{n} ходов"
+
 class GameStateManager:
     def __init__(self, state_file="game_state.json"):
         self.state_file = state_file
@@ -87,6 +96,8 @@ class GameStateManager:
 
         # 2. Check session cooldown if starting a new game (before changing turn history)
         game_started = False
+        new_record = False
+        turns = 0
         if not state["game_active"]:
             if state.get("session_ended_at") is not None and not force_win:
                 elapsed = time.time() - state["session_ended_at"]
@@ -134,11 +145,13 @@ class GameStateManager:
                     }
 
                 # Update longest session stats
+                turns = state["current_session_messages"]
                 longest = state.get("longest_session")
-                if longest is None or state["current_session_messages"] > longest["messages"]:
+                if longest is None or turns > longest["messages"]:
+                    new_record = True
                     ended_at = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
                     state["longest_session"] = {
-                        "messages": state["current_session_messages"],
+                        "messages": turns,
                         "winner_name": user_display_name,
                         "ended_at": ended_at
                     }
@@ -154,7 +167,9 @@ class GameStateManager:
             "game_started": game_started,
             "outcome": outcome,
             "game_ended": game_ended,
-            "winner_name": user_display_name if game_ended else None
+            "winner_name": user_display_name if game_ended else None,
+            "turns": turns,
+            "new_record": new_record
         }
 
     def get_leaderboard_text(self, chat_id):
@@ -210,15 +225,6 @@ class GameStateManager:
         messages = longest["messages"]
         winner = longest["winner_name"]
         ended_at = longest["ended_at"]
-
-        # Pluralize turns/messages in Russian
-        def pluralize_turns(n):
-            if n % 10 == 1 and n % 100 != 11:
-                return f"{n} ход"
-            elif 2 <= n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20):
-                return f"{n} хода"
-            else:
-                return f"{n} ходов"
 
         return (
             f"🏆 Самая долгая игра в этом чате:\n\n"
