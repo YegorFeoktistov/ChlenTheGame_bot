@@ -266,6 +266,52 @@ class TestGameStateManager(unittest.TestCase):
         self.assertIn("WinnerTag", text_longest)
         self.assertNotIn("@WinnerTag", text_longest)
 
+    def test_subscribe_unsubscribe_and_get_subscribers(self):
+        chat_id = 999
+        # Initial subscribers list should be empty
+        subs = self.manager.get_subscribers(chat_id)
+        self.assertEqual(subs, {})
+
+        # Subscribe user 1
+        self.manager.subscribe_user(chat_id, 1, "user_one")
+        subs = self.manager.get_subscribers(chat_id)
+        self.assertEqual(subs, {"1": "user_one"})
+
+        # Subscribe user 2
+        self.manager.subscribe_user(chat_id, 2, "user_two")
+        subs = self.manager.get_subscribers(chat_id)
+        self.assertEqual(subs, {"1": "user_one", "2": "user_two"})
+
+        # Unsubscribe user 1
+        self.manager.unsubscribe_user(chat_id, 1)
+        subs = self.manager.get_subscribers(chat_id)
+        self.assertEqual(subs, {"2": "user_two"})
+
+        # Unsubscribe user 2
+        self.manager.unsubscribe_user(chat_id, 2)
+        subs = self.manager.get_subscribers(chat_id)
+        self.assertEqual(subs, {})
+
+    def test_backward_compatibility_for_subscribers(self):
+        # Directly inject state without subscribers to simulate old state
+        chat_id = 1111
+        chat_key = str(chat_id)
+        self.manager.states[chat_key] = {
+            "game_active": False,
+            "last_user_id": None,
+            "warned_users": [],
+            "leaderboard": {},
+            "current_session_messages": 0,
+            "longest_session": None,
+            "session_ended_at": None
+        }
+        self.manager.save_state()
+
+        # Load it through manager and make sure it has 'subscribers' key automatically
+        new_manager = GameStateManager(state_file=self.state_file)
+        subs = new_manager.get_subscribers(chat_id)
+        self.assertEqual(subs, {})
+
 if __name__ == "__main__":
     unittest.main()
 

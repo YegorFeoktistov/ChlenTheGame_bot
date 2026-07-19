@@ -17,6 +17,10 @@ Telegram bot for group chats running a fun interactive turn-based luck game.
 6. **Leaderboard**: Sending the `/chlenboard` command displays the scoreboard of wins in the group chat, sorted from highest to lowest.
 7. **Longest Session**: Sending the `/longestchlen` command displays statistics on the longest completed game session in the chat (number of turns, winner name, and ending date/time).
 8. **Session Cooldown**: Once a session ends, there is a 10-second cooldown before a new game session can be started. Any attempt to start a session within this window triggers the warning: `Дай члену отдохнуть`.
+9. **Subscriptions**: Users can subscribe to receive notifications when a new game session starts.
+   - `/chlensub`: Subscribes the user (requires them to have a Telegram username set in their profile). The bot replies: `{username} подписался на Член. Уважаемый мужчина!`
+   - `/chlenunsub`: Unsubscribes the user. The bot replies: `{username} отписался от Члена. Ты что натурал?`
+   - When a session starts, all subscribers are tagged on a new line: `{usernames} - лови(те) Член!` ("лови" is used for one subscriber, and "ловите" for multiple).
 
 ---
 
@@ -25,6 +29,8 @@ The bot automatically configures the command suggestions menu in Telegram when i
 - `/chlen` - Испытать удачу в игре
 - `/chlenboard` - Посмотреть таблицу лидеров
 - `/longestchlen` - Посмотреть самую долгую игру
+- `/chlensub` - Подписаться на уведомления о старте
+- `/chlenunsub` - Отписаться от уведомлений о старте
 - `/start` - Прочитать инструкцию
 
 

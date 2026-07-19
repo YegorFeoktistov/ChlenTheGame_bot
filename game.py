@@ -53,7 +53,8 @@ class GameStateManager:
                 "leaderboard": {},
                 "current_session_messages": 0,
                 "longest_session": None,
-                "session_ended_at": None
+                "session_ended_at": None,
+                "subscribers": {}
             }
         else:
             # Ensure backward compatibility for pre-existing state files
@@ -65,6 +66,8 @@ class GameStateManager:
                 self.states[chat_key]["longest_session"] = None
             if "session_ended_at" not in self.states[chat_key]:
                 self.states[chat_key]["session_ended_at"] = None
+            if "subscribers" not in self.states[chat_key]:
+                self.states[chat_key]["subscribers"] = {}
         return self.states[chat_key]
 
     def handle_command(self, chat_id, user_id, user_display_name, roll_override=None, force_win=False):
@@ -236,3 +239,22 @@ class GameStateManager:
             f"👑 Победитель: {winner}\n"
             f"📅 Дата окончания: {ended_at}"
         )
+
+    def subscribe_user(self, chat_id, user_id, username):
+        """Subscribes a user to session starts in a chat."""
+        state = self.get_chat_state(chat_id)
+        state["subscribers"][str(user_id)] = username
+        self.save_state()
+
+    def unsubscribe_user(self, chat_id, user_id):
+        """Unsubscribes a user from session starts in a chat."""
+        state = self.get_chat_state(chat_id)
+        user_key = str(user_id)
+        if user_key in state["subscribers"]:
+            del state["subscribers"][user_key]
+            self.save_state()
+
+    def get_subscribers(self, chat_id):
+        """Gets subscribers for a chat."""
+        state = self.get_chat_state(chat_id)
+        return state["subscribers"]

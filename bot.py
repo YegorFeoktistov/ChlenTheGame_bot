@@ -70,9 +70,16 @@ async def chlen_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Announce start of game session if it was just triggered
         if res.get("game_started"):
             logger.info(f"New game session started in chat_id={chat_id}")
+            subscribers = manager.get_subscribers(chat_id)
+            sub_text = ""
+            if subscribers:
+                sub_list = [f"@{u.lstrip('@')}" for u in subscribers.values() if u]
+                if sub_list:
+                    verb = "лови" if len(sub_list) == 1 else "ловите"
+                    sub_text = f"\n{' '.join(sub_list)} - {verb} Член!"
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="Член - игра началась!"
+                text=f"Член - игра началась! 🍆{sub_text}"
             )
 
         # Post the main outcome message (either "Член" or "Я победил") as a reply to the user.
@@ -119,6 +126,56 @@ async def longestchlen_command(update: Update, context: ContextTypes.DEFAULT_TYP
     text = manager.get_longest_session_text(chat_id)
     await update.message.reply_text(text)
 
+async def chlensub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler for the /chlensub command."""
+    if not update.message or not update.effective_chat or not update.effective_user:
+        return
+
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    user_id = user.id
+    telegram_username = user.username
+
+    # Format the user's name/surname (display name)
+    display_name = user.first_name
+    if user.last_name:
+        display_name += f" {user.last_name}"
+
+    logger.info(f"Received /chlensub from user_id={user_id} ({display_name}) in chat_id={chat_id}")
+
+    if not telegram_username:
+        await update.message.reply_text(
+            "Для подписки на уведомления необходимо установить никнейм (username) в настройках Телеграма."
+        )
+        return
+
+    manager.subscribe_user(chat_id, user_id, telegram_username)
+
+    await update.message.reply_text(
+        f"{display_name} подписался на Член. Уважаемый мужчина!"
+    )
+
+async def chlenunsub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler for the /chlenunsub command."""
+    if not update.message or not update.effective_chat or not update.effective_user:
+        return
+
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    user_id = user.id
+
+    display_name = user.first_name
+    if user.last_name:
+        display_name += f" {user.last_name}"
+
+    logger.info(f"Received /chlenunsub from user_id={user_id} ({display_name}) in chat_id={chat_id}")
+
+    manager.unsubscribe_user(chat_id, user_id)
+
+    await update.message.reply_text(
+        f"{display_name} отписался от Члена. Ты что натурал?"
+    )
+
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler to capture plain text messages like 'член' and route them as /chlen."""
     if not update.message or not update.message.text:
@@ -153,6 +210,8 @@ async def post_init(application) -> None:
         BotCommand("chlen", "Испытать удачу"),
         BotCommand("chlenboard", "Таблица лидеров"),
         BotCommand("longestchlen", "Самая долгая игра"),
+        BotCommand("chlensub", "Подписаться на уведомления о старте"),
+        BotCommand("chlenunsub", "Отписаться от уведомлений о старте"),
         BotCommand("start", "Инструкция к игре")
     ])
 
@@ -170,6 +229,8 @@ def main() -> None:
     app.add_handler(CommandHandler("chlen", chlen_command))
     app.add_handler(CommandHandler("chlenboard", chlenboard_command))
     app.add_handler(CommandHandler("longestchlen", longestchlen_command))
+    app.add_handler(CommandHandler("chlensub", chlensub_command))
+    app.add_handler(CommandHandler("chlenunsub", chlenunsub_command))
     app.add_handler(CommandHandler("start", start_command))
     # Route plain text messages (e.g. "член") to text_message_handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
