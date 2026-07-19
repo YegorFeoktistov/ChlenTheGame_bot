@@ -79,7 +79,7 @@ async def chlen_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     sub_text = f"\n{' '.join(sub_list)} - {verb} Член!"
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"Член - игра началась! 🍆{sub_text}"
+                text=f"Член - игра началась!{sub_text}"
             )
 
         # Post the main outcome message (either "Член" or "Я победил") as a reply to the user.
