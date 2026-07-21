@@ -24,11 +24,23 @@ Telegram bot for group chats running a fun interactive turn-based luck game.
 
 ---
 
+## Game Classes
+Players can choose a class using `/becomechlen INDEX`. Use `/whichchlen` to check your current class, or `/chlenclasses` to see all available classes.
+
+1. **Членокнижник** - The first to understand the Chlen
+2. **Членомант** - The master of ancient Chlen arts
+3. **Членодин** - The one and only Chlen
+4. **Охотник на Члены** - Hunter of Chlens
+5. **Мастер тысячи Членов** - Master of a thousand Chlens
+
 ## Command Suggestions
 The bot automatically configures the command suggestions menu in Telegram when it starts up (via `post_init` registration). The available commands are:
 - `/chlen` - Испытать удачу в игре
 - `/chlenboard` - Посмотреть таблицу лидеров
 - `/longestchlen` - Посмотреть самую долгую игру
+- `/chlenclasses` - Посмотреть доступные классы
+- `/becomechlen` - Выбрать класс (например, `/becomechlen 1`)
+- `/whichchlen` - Посмотреть свой текущий класс
 - `/chlensub` - Подписаться на уведомления о старте
 - `/chlenunsub` - Отписаться от уведомлений о старте
 - `/start` - Прочитать инструкцию

@@ -3,14 +3,31 @@ import os
 import random
 import datetime
 import time
+from enum import IntEnum
 
-CHLEN_CLASSES = [
-    "Членокнижник",
-    "Членомант",
-    "Членодин",
-    "Охотник на Члены",
-    "Мастер тысячи Членов",
-]
+class ChlenClass(IntEnum):
+    CHLENOKNIZHNIK = 1
+    CHLENOMANT = 2
+    CHLENOBIN = 3
+    HUNTER = 4
+    MASTER = 5
+
+_CLASS_NAMES = {
+    ChlenClass.CHLENOKNIZHNIK: "Членокнижник",
+    ChlenClass.CHLENOMANT: "Членомант",
+    ChlenClass.CHLENOBIN: "Членодин",
+    ChlenClass.HUNTER: "Охотник на Члены",
+    ChlenClass.MASTER: "Мастер тысячи Членов",
+}
+
+def get_class_name(cls):
+    """Returns the display name for a ChlenClass enum value."""
+    if isinstance(cls, int):
+        for k, v in _CLASS_NAMES.items():
+            if k.value == cls:
+                return v
+        return None
+    return _CLASS_NAMES.get(cls)
 
 def pluralize_turns(n):
     """Pluralize turns/messages in Russian."""
@@ -270,8 +287,8 @@ class GameStateManager:
     def get_classes_text(self):
         """Returns a formatted list of available game classes."""
         lines = ["⚔️ Доступные классы:\n"]
-        for i, cls in enumerate(CHLEN_CLASSES, 1):
-            lines.append(f"{i}. {cls}")
+        for cls in ChlenClass:
+            lines.append(f"{cls.value}. {get_class_name(cls)}")
         return "\n".join(lines)
 
     def set_user_class(self, chat_id, user_id, class_index):
@@ -287,6 +304,10 @@ class GameStateManager:
         state = self.get_chat_state(chat_id)
         user_classes = state.get("user_classes", {})
         class_index = user_classes.get(str(user_id))
-        if class_index is not None and 1 <= class_index <= len(CHLEN_CLASSES):
-            return CHLEN_CLASSES[class_index - 1]
+        if class_index is not None:
+            try:
+                cls = ChlenClass(class_index)
+                return get_class_name(cls)
+            except ValueError:
+                return None
         return None

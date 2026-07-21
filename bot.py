@@ -4,7 +4,7 @@ import logging
 from dotenv import load_dotenv
 from telegram import Update, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
-from game import GameStateManager, CHLEN_CLASSES
+from game import GameStateManager, ChlenClass, get_class_name
 
 # Configure logging
 logging.basicConfig(
@@ -224,13 +224,13 @@ async def becomechlen_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Индекс должен быть числом.")
         return
 
-    if class_index < 1 or class_index > len(CHLEN_CLASSES):
-        await update.message.reply_text(f"Неверный индекс. Доступные классы: 1-{len(CHLEN_CLASSES)}")
+    if class_index < 1 or class_index > len(list(ChlenClass)):
+        await update.message.reply_text(f"Неверный индекс. Доступные классы: 1-{len(list(ChlenClass))}")
         return
 
     manager.set_user_class(chat_id, user_id, class_index)
 
-    class_name = CHLEN_CLASSES[class_index - 1]
+    class_name = get_class_name(ChlenClass(class_index))
     await update.message.reply_text(f"{display_name} стал {class_name}!")
 
 
