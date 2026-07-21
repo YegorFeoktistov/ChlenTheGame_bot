@@ -1,4 +1,4 @@
-# Член - the Game - Telegram Bot
+# Член: the Game - Telegram Bot
 
 Telegram bot for group chats running a fun interactive turn-based luck game.
 
