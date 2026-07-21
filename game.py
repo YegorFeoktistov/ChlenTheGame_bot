@@ -4,6 +4,14 @@ import random
 import datetime
 import time
 
+CHLEN_CLASSES = [
+    "Членокнижник",
+    "Членомант",
+    "Членодин",
+    "Охотник на Члены",
+    "Мастер тысячи Членов",
+]
+
 def pluralize_turns(n):
     """Pluralize turns/messages in Russian."""
     if n % 10 == 1 and n % 100 != 11:
@@ -258,3 +266,10 @@ class GameStateManager:
         """Gets subscribers for a chat."""
         state = self.get_chat_state(chat_id)
         return state["subscribers"]
+
+    def get_classes_text(self):
+        """Returns a formatted list of available game classes."""
+        lines = ["⚔️ Доступные классы:\n"]
+        for i, cls in enumerate(CHLEN_CLASSES, 1):
+            lines.append(f"{i}. {cls}")
+        return "\n".join(lines)

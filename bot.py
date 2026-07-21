@@ -189,6 +189,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.info(f"Routing secret win phrase '{update.message.text}'")
         await chlen_command(update, context)
 
+async def chlenclasses_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler for the /chlenclasses command."""
+    if not update.message or not update.effective_chat:
+        return
+    chat_id = update.effective_chat.id
+    logger.info(f"Received /chlenclasses request in chat_id={chat_id}")
+    text = manager.get_classes_text()
+    await update.message.reply_text(text)
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler for the /start command."""
     if not update.message:
@@ -200,7 +209,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Каждый ход дает тебе 10% шанс выиграть. Но помни: ты не можешь ходить дважды подряд!\n\n"
         "Доступные команды:\n"
         "/chlenboard - посмотреть таблицу лидеров\n"
-        "/longestchlen - посмотреть статистику самой долгой игры"
+        "/longestchlen - посмотреть статистику самой долгой игры\n"
+        "/chlenclasses - посмотреть классы в игре"
     )
 
 async def post_init(application) -> None:
@@ -210,6 +220,7 @@ async def post_init(application) -> None:
         BotCommand("chlen", "Испытать удачу"),
         BotCommand("chlenboard", "Таблица лидеров"),
         BotCommand("longestchlen", "Самая долгая игра"),
+        BotCommand("chlenclasses", "Классы в игре"),
         BotCommand("chlensub", "Подписаться на уведомления о старте"),
         BotCommand("chlenunsub", "Отписаться от уведомлений о старте"),
         BotCommand("start", "Инструкция к игре")
@@ -229,6 +240,7 @@ def main() -> None:
     app.add_handler(CommandHandler("chlen", chlen_command))
     app.add_handler(CommandHandler("chlenboard", chlenboard_command))
     app.add_handler(CommandHandler("longestchlen", longestchlen_command))
+    app.add_handler(CommandHandler("chlenclasses", chlenclasses_command))
     app.add_handler(CommandHandler("chlensub", chlensub_command))
     app.add_handler(CommandHandler("chlenunsub", chlenunsub_command))
     app.add_handler(CommandHandler("start", start_command))
