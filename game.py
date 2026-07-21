@@ -29,6 +29,14 @@ def get_class_name(cls):
         return None
     return _CLASS_NAMES.get(cls)
 
+CHLEN_CLASSES = [
+    "Членокнижник",
+    "Членомант",
+    "Членодин",
+    "Охотник на Члены",
+    "Мастер тысячи Членов",
+]
+
 def pluralize_turns(n):
     """Pluralize turns/messages in Russian."""
     if n % 10 == 1 and n % 100 != 11:
