@@ -88,7 +88,7 @@ describe('Skills Service', () => {
       lastUserId: 'user1',
       sessionMessagesCount: 10,
       sessionEndedAt: null,
-      skillsUsed: JSON.stringify(['user2']),
+      skillUserIds: JSON.stringify(['user2']),
       warnedUserIds: JSON.stringify(['user3']),
     } as unknown as GameSessionRecord;
 
@@ -112,7 +112,7 @@ describe('Skills Service', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 10,
       sessionEndedAt: null,
-      skillsUsed: JSON.stringify(['user1']),
+      skillUserIds: JSON.stringify(['user1']),
       warnedUserIds: JSON.stringify([]),
     } as unknown as GameSessionRecord;
 
@@ -128,13 +128,13 @@ describe('Skills Service', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 10,
       sessionEndedAt: null,
-      skillsUsed: JSON.stringify([]),
+      skillUserIds: JSON.stringify([]),
       warnedUserIds: JSON.stringify([]),
     } as unknown as GameSessionRecord;
 
     await recordSkillUsed('chat1', 'user1');
 
-    expect(mockGameSessions['chat1'].skillsUsed).toBe(JSON.stringify(['user1']));
+    expect(mockGameSessions['chat1'].skillUserIds).toBe(JSON.stringify(['user1']));
   });
 
   it('does not duplicate skill usage for same user', async () => {
@@ -144,13 +144,13 @@ describe('Skills Service', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 10,
       sessionEndedAt: null,
-      skillsUsed: JSON.stringify(['user1']),
+      skillUserIds: JSON.stringify(['user1']),
       warnedUserIds: JSON.stringify([]),
     } as unknown as GameSessionRecord;
 
     await recordSkillUsed('chat1', 'user1');
 
-    expect(mockGameSessions['chat1'].skillsUsed).toBe(JSON.stringify(['user1']));
+    expect(mockGameSessions['chat1'].skillUserIds).toBe(JSON.stringify(['user1']));
   });
 
   it('returns null for invalid class index', async () => {

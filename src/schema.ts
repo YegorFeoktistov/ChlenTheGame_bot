@@ -53,7 +53,7 @@ export const chatGameSessions = table('chat_game_sessions', {
   sessionMessagesCount: integer('session_messages_count').default(0),
   sessionEndedAt: integer('session_ended_at'), // Unix timestamp in seconds for 10s cooldown
   warnedUserIds: text('warned_user_ids').default('[]'), // JSON array string
-  skillsUsed: text('skills_used').default('[]'), // JSON array of user IDs who used their skill
+  skillUserIds: text('skill_user_ids').default('[]'), // JSON array of user IDs who used their skill
 });
 
 // 6. Longest Game Session Records Per Chat

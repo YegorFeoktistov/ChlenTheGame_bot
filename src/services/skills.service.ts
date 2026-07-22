@@ -35,19 +35,19 @@ export async function getUserSkillText(
     return { skillText, alreadyUsed: false };
   }
 
-  const skillsUsed: string[] = [];
+  const skillUserIds: string[] = [];
   try {
-    if (session.skillsUsed) {
-      const parsed = JSON.parse(session.skillsUsed);
+    if (session.skillUserIds) {
+      const parsed = JSON.parse(session.skillUserIds);
       if (Array.isArray(parsed)) {
-        skillsUsed.push(...parsed);
+        skillUserIds.push(...parsed);
       }
     }
   } catch {
     // ignore
   }
 
-  const alreadyUsed = skillsUsed.includes(userId);
+  const alreadyUsed = skillUserIds.includes(userId);
 
   return { skillText, alreadyUsed };
 }
@@ -64,20 +64,20 @@ export async function recordSkillUsed(chatId: string, userId: string): Promise<v
     return;
   }
 
-  const skillsUsed: string[] = [];
+  const skillUserIds: string[] = [];
   try {
-    if (session.skillsUsed) {
-      const parsed = JSON.parse(session.skillsUsed);
+    if (session.skillUserIds) {
+      const parsed = JSON.parse(session.skillUserIds);
       if (Array.isArray(parsed)) {
-        skillsUsed.push(...parsed);
+        skillUserIds.push(...parsed);
       }
     }
   } catch {
     // ignore
   }
 
-  if (!skillsUsed.includes(userId)) {
-    skillsUsed.push(userId);
+  if (!skillUserIds.includes(userId)) {
+    skillUserIds.push(userId);
     await db
       .insert(chatGameSessions)
       .values({
@@ -87,11 +87,11 @@ export async function recordSkillUsed(chatId: string, userId: string): Promise<v
         sessionMessagesCount: session.sessionMessagesCount,
         sessionEndedAt: session.sessionEndedAt,
         warnedUserIds: session.warnedUserIds,
-        skillsUsed: JSON.stringify(skillsUsed),
+        skillUserIds: JSON.stringify(skillUserIds),
       })
       .onConflictDoUpdate({
         target: chatGameSessions.chatId,
-        set: { skillsUsed: JSON.stringify(skillsUsed) },
+        set: { skillUserIds: JSON.stringify(skillUserIds) },
       })
       .run();
   }

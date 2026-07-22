@@ -1,6 +1,6 @@
 {
   "name": "chlen-the-game-bot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chlen: the Game Telegram Bot hosted on Telegram Serverless",
   "main": "dist/handlers/message.js",
   "type": "module",
