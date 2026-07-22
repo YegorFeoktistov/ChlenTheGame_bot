@@ -1,26 +1,20 @@
-# Virtual environment
-venv/
-.venv/
-env/
-
 # Environment variables (secrets)
 .env
+.env.local
 
-# Local state database (contains scores, etc.)
-game_state.json
-test_game_state.json
+# Local SQLite database
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Node / TypeScript build & dependencies
+# Node / TypeScript build, coverage & dependencies
 node_modules/
 dist/
+coverage/
 .tgcloud/
 
-# IDE files
+# IDE & OS files
 .vscode/
 .idea/
 .DS_Store
