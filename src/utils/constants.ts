@@ -30,7 +30,6 @@ export enum StrictTurnStatus {
   VALID = 'valid',
   EXCLUDED = 'excluded',
   OUT_OF_TURN_WARNING = 'out_of_turn_warning',
-  OUT_OF_TURN_IGNORED = 'out_of_turn_ignored',
   TURN_SKIPPED = 'turn_skipped',
   ORDER_69 = 'order_69',
 }
