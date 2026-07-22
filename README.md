@@ -53,6 +53,13 @@ Modern, high-performance Node.js & TypeScript Telegram Bot for group chats runni
 
 ---
 
+## Architecture & Deployment Notes
+
+- **Single-Instance Deployment**: Designed for single-process deployment using embedded SQLite (WAL mode) and in-memory per-chat FIFO mutex locks (`withChatLock`). For multi-host deployments, replace the in-memory lock with a distributed Redis lock (Redlock).
+- **Automated Database Migrations**: Schema updates (e.g. `ALTER TABLE chats ADD COLUMN queue_mode`) and indexes (`idx_chat_queue_players_chat_lastturn`, `idx_chat_queue_players_chat_excluded`) run automatically on startup.
+
+---
+
 ## Quality Suite & Testing
 
 - **Run Unit Tests (Vitest)**:

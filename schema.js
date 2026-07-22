@@ -2,80 +2,127 @@
 import Database from "better-sqlite3";
 import path from "path";
 import dotenv from "dotenv";
+
+// src/adapters/migrations.ts
+var migrations = [
+  {
+    name: "001_initial_schema",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chats (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          created_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          first_name TEXT,
+          last_name TEXT,
+          username TEXT,
+          updated_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_user_stats (
+          chat_id TEXT,
+          user_id TEXT,
+          wins INTEGER DEFAULT 0,
+          display_name TEXT,
+          class_index INTEGER,
+          PRIMARY KEY (chat_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_subscribers (
+          chat_id TEXT,
+          user_id TEXT,
+          username TEXT,
+          PRIMARY KEY (chat_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_game_sessions (
+          chat_id TEXT PRIMARY KEY,
+          is_active INTEGER DEFAULT 0,
+          last_user_id TEXT,
+          session_messages_count INTEGER DEFAULT 0,
+          session_ended_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_longest_sessions (
+          chat_id TEXT PRIMARY KEY,
+          messages_count INTEGER,
+          winner_id TEXT,
+          winner_display_name TEXT,
+          ended_at TEXT
+        );
+      `);
+    }
+  },
+  {
+    name: "002_add_queue_mode_and_queue_tables",
+    up: (db) => {
+      const columns = db.pragma("table_info(chats)");
+      const hasQueueMode = columns.some((c) => c.name === "queue_mode");
+      if (!hasQueueMode) {
+        db.exec("ALTER TABLE chats ADD COLUMN queue_mode INTEGER DEFAULT 1;");
+      }
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chat_warned_users (
+          chat_id TEXT,
+          user_id TEXT,
+          PRIMARY KEY (chat_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_skill_users (
+          chat_id TEXT,
+          user_id TEXT,
+          PRIMARY KEY (chat_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_queue_players (
+          chat_id TEXT,
+          user_id TEXT,
+          turn_order INTEGER,
+          skip_count INTEGER DEFAULT 0,
+          is_excluded INTEGER DEFAULT 0,
+          last_turn_at INTEGER,
+          PRIMARY KEY (chat_id, user_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_queue_players_chat_lastturn ON chat_queue_players(chat_id, last_turn_at);
+        CREATE INDEX IF NOT EXISTS idx_chat_queue_players_chat_excluded ON chat_queue_players(chat_id, is_excluded);
+      `);
+    }
+  }
+];
+function runMigrations(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      applied_at INTEGER NOT NULL
+    );
+  `);
+  const appliedRows = db.prepare("SELECT name FROM schema_migrations").all();
+  const appliedNames = new Set(appliedRows.map((r) => r.name));
+  for (const migration of migrations) {
+    if (!appliedNames.has(migration.name)) {
+      db.transaction(() => {
+        migration.up(db);
+        db.prepare("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)").run(
+          migration.name,
+          Math.floor(Date.now() / 1e3)
+        );
+      })();
+    }
+  }
+}
+
+// src/adapters/sqlite.ts
 dotenv.config();
 var dbPath = process.env.DB_PATH || path.join(process.cwd(), "chlenbot.db");
 var sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS chats (
-    id TEXT PRIMARY KEY,
-    title TEXT,
-    queue_mode INTEGER DEFAULT 1,
-    created_at INTEGER
-  );
-
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    first_name TEXT,
-    last_name TEXT,
-    username TEXT,
-    updated_at INTEGER
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_user_stats (
-    chat_id TEXT,
-    user_id TEXT,
-    wins INTEGER DEFAULT 0,
-    display_name TEXT,
-    class_index INTEGER,
-    PRIMARY KEY (chat_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_subscribers (
-    chat_id TEXT,
-    user_id TEXT,
-    username TEXT,
-    PRIMARY KEY (chat_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_game_sessions (
-    chat_id TEXT PRIMARY KEY,
-    is_active INTEGER DEFAULT 0,
-    last_user_id TEXT,
-    session_messages_count INTEGER DEFAULT 0,
-    session_ended_at INTEGER
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_warned_users (
-    chat_id TEXT,
-    user_id TEXT,
-    PRIMARY KEY (chat_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_skill_users (
-    chat_id TEXT,
-    user_id TEXT,
-    PRIMARY KEY (chat_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_queue_players (
-    chat_id TEXT,
-    user_id TEXT,
-    turn_order INTEGER,
-    skip_count INTEGER DEFAULT 0,
-    is_excluded INTEGER DEFAULT 0,
-    last_turn_at INTEGER,
-    PRIMARY KEY (chat_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_longest_sessions (
-    chat_id TEXT PRIMARY KEY,
-    messages_count INTEGER,
-    winner_id TEXT,
-    winner_display_name TEXT,
-    ended_at TEXT
-  );
-`);
+runMigrations(sqlite);
 
 // src/adapters/db.ts
 import dotenv2 from "dotenv";

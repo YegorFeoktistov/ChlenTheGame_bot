@@ -15,11 +15,19 @@ export async function getQueueMode(chatId: string): Promise<number> {
 }
 
 export async function setQueueMode(chatId: string, mode: number): Promise<void> {
+  const existingRows = (await db
+    .select()
+    .from(chats)
+    .where(eq(chats.id, chatId))
+    .run()) as ChatRecord[];
+
+  const title = existingRows && existingRows.length > 0 ? existingRows[0].title : 'Chat';
+
   await db
     .insert(chats)
     .values({
       id: chatId,
-      title: 'Chat',
+      title,
       queueMode: mode,
     })
     .onConflictDoUpdate({
