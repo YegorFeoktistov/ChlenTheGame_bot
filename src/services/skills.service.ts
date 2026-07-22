@@ -1,7 +1,7 @@
 import { db } from 'sdk';
 import { chatGameSessions, chatUserStats } from '../schema.js';
 import { eq, and } from 'sdk/db';
-import { CHLEN_CLASS_SKILLS } from '../utils/constants.js';
+import { CHLEN_CLASS_SKILLS, ChlenClass } from '../utils/constants.js';
 import type { GameSessionRecord } from '../types/models.js';
 
 export async function getUserSkillText(
@@ -15,11 +15,14 @@ export async function getUserSkillText(
     .run()) as { classIndex: number | null }[];
 
   const classIndex = userStatsRows[0]?.classIndex;
-  if (!classIndex || classIndex < 1 || classIndex > CHLEN_CLASS_SKILLS.length) {
+  const classValues = Object.values(ChlenClass).filter(
+    (v): v is ChlenClass => typeof v === 'string'
+  );
+  if (!classIndex || classIndex < 1 || classIndex > classValues.length) {
     return null;
   }
 
-  const skillText = CHLEN_CLASS_SKILLS[classIndex - 1];
+  const skillText = CHLEN_CLASS_SKILLS[classValues[classIndex - 1]];
 
   const sessionRows = (await db
     .select()
