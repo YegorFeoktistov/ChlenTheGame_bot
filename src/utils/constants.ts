@@ -14,6 +14,4 @@ export const CHLEN_CLASS_SKILLS: Record<ChlenClass, string> = {
   [ChlenClass.MASTER_TISYACHI_CHLENOV]: 'Мастер тысячи Членов: "Я овладеваю тысячей Членов!"',
 };
 
-export const CHLEN_CLASSES: readonly ChlenClass[] = Object.values(ChlenClass).filter(
-  (v) => typeof v === 'string'
-) as unknown as readonly ChlenClass[];
+export const CHLEN_CLASSES: readonly ChlenClass[] = Object.values(ChlenClass);

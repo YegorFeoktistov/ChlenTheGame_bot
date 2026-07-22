@@ -5,17 +5,20 @@ import type {
   GameSessionRecord,
   UserStatRecord,
   LongestSessionRecord,
+  WarnedUserRecord,
 } from '../src/types/models.js';
 
 let mockGameSessions: Record<string, GameSessionRecord> = {};
 let mockUserStats: Record<string, UserStatRecord> = {};
 let mockLongestSessions: Record<string, LongestSessionRecord> = {};
+let mockWarnedUsers: Record<string, WarnedUserRecord> = {};
 
 describe('Game Engine Service', () => {
   beforeEach(() => {
     mockGameSessions = {};
     mockUserStats = {};
     mockLongestSessions = {};
+    mockWarnedUsers = {};
 
     vi.spyOn(db, 'insert').mockImplementation(
       (tbl: { name?: string }) =>
@@ -41,10 +44,25 @@ describe('Game Engine Service', () => {
                   mockLongestSessions[val.chatId as string] =
                     updated as unknown as LongestSessionRecord;
                 }
+                if (tbl && tbl.name === 'chat_warned_users') {
+                  mockWarnedUsers[`${val.chatId}_${val.userId}`] =
+                    val as unknown as WarnedUserRecord;
+                }
               },
             }),
           }),
         }) as unknown as ReturnType<typeof db.insert>
+    );
+
+    vi.spyOn(db, 'delete').mockImplementation(
+      () =>
+        ({
+          where: () => ({
+            run: async () => {
+              mockWarnedUsers = {};
+            },
+          }),
+        }) as unknown as ReturnType<typeof db.delete>
     );
 
     vi.spyOn(db, 'select').mockImplementation(
@@ -58,6 +76,7 @@ describe('Game Engine Service', () => {
                 if (tbl && tbl.name === 'chat_user_stats') return Object.values(mockUserStats);
                 if (tbl && tbl.name === 'chat_longest_sessions')
                   return Object.values(mockLongestSessions);
+                if (tbl && tbl.name === 'chat_warned_users') return Object.values(mockWarnedUsers);
                 return [];
               },
             }),

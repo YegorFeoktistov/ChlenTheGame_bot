@@ -1,7 +1,18 @@
 import { db } from 'sdk';
-import { chatGameSessions, chatUserStats, chatLongestSessions } from '../schema.js';
+import {
+  chatGameSessions,
+  chatUserStats,
+  chatLongestSessions,
+  chatWarnedUsers,
+  chatSkillUsers,
+} from '../schema.js';
 import { eq, and } from 'sdk/db';
-import type { GameSessionRecord, UserStatRecord, LongestSessionRecord } from '../types/models.js';
+import type {
+  GameSessionRecord,
+  UserStatRecord,
+  LongestSessionRecord,
+  WarnedUserRecord,
+} from '../types/models.js';
 
 export interface CommandResult {
   status: 'ignored' | 'warning' | 'session_cooldown' | 'success';
@@ -37,36 +48,27 @@ export async function handleGameCommand(
           lastUserId: null,
           sessionMessagesCount: 0,
           sessionEndedAt: null,
-          warnedUserIds: '[]',
-          skillUserIds: '[]',
         };
-
-  let warnedUsers: string[] = [];
-  try {
-    warnedUsers = JSON.parse(session.warnedUserIds || '[]');
-  } catch {
-    warnedUsers = [];
-  }
 
   // 1. Turn order verification (consecutive moves check)
   if (session.lastUserId && session.lastUserId === userId) {
-    if (warnedUsers.includes(userId)) {
+    const warnedRows = (await db
+      .select()
+      .from(chatWarnedUsers)
+      .where(and(eq(chatWarnedUsers.chatId, chatId), eq(chatWarnedUsers.userId, userId)))
+      .run()) as WarnedUserRecord[];
+
+    const isWarned = warnedRows && warnedRows.length > 0;
+
+    if (isWarned) {
       return { status: 'ignored' };
     } else {
-      warnedUsers.push(userId);
       await db
-        .insert(chatGameSessions)
-        .values({
-          chatId,
-          isActive: session.isActive,
-          lastUserId: session.lastUserId,
-          sessionMessagesCount: session.sessionMessagesCount,
-          sessionEndedAt: session.sessionEndedAt,
-          warnedUserIds: JSON.stringify(warnedUsers),
-        })
+        .insert(chatWarnedUsers)
+        .values({ chatId, userId })
         .onConflictDoUpdate({
-          target: chatGameSessions.chatId,
-          set: { warnedUserIds: JSON.stringify(warnedUsers) },
+          target: [chatWarnedUsers.chatId, chatWarnedUsers.userId],
+          set: { chatId, userId },
         })
         .run();
 
@@ -91,8 +93,9 @@ export async function handleGameCommand(
     gameStarted = true;
   }
 
-  // 3. Update turn history
-  warnedUsers = [];
+  // 3. Reset warned users list on valid turn or game start
+  await db.delete(chatWarnedUsers).where(eq(chatWarnedUsers.chatId, chatId)).run();
+
   session.lastUserId = userId;
 
   if (gameStarted) {
@@ -117,6 +120,9 @@ export async function handleGameCommand(
       session.lastUserId = null;
       session.sessionEndedAt = nowUnix;
       turns = session.sessionMessagesCount;
+
+      // Reset skill usage for all players in this chat for next game
+      await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
 
       // Update win count in leaderboard stats
       const userStatsRows = (await db
@@ -204,7 +210,6 @@ export async function handleGameCommand(
       lastUserId: session.lastUserId,
       sessionMessagesCount: session.sessionMessagesCount,
       sessionEndedAt: session.sessionEndedAt,
-      warnedUserIds: '[]',
     })
     .onConflictDoUpdate({
       target: chatGameSessions.chatId,
@@ -213,7 +218,6 @@ export async function handleGameCommand(
         lastUserId: session.lastUserId,
         sessionMessagesCount: session.sessionMessagesCount,
         sessionEndedAt: session.sessionEndedAt,
-        warnedUserIds: '[]',
       },
     })
     .run();

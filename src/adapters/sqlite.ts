@@ -46,9 +46,19 @@ sqlite.exec(`
     is_active INTEGER DEFAULT 0,
     last_user_id TEXT,
     session_messages_count INTEGER DEFAULT 0,
-    session_ended_at INTEGER,
-    warned_user_ids TEXT DEFAULT '[]',
-    skill_user_ids TEXT DEFAULT '[]'
+    session_ended_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_warned_users (
+    chat_id TEXT,
+    user_id TEXT,
+    PRIMARY KEY (chat_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_skill_users (
+    chat_id TEXT,
+    user_id TEXT,
+    PRIMARY KEY (chat_id, user_id)
   );
 
   CREATE TABLE IF NOT EXISTS chat_longest_sessions (

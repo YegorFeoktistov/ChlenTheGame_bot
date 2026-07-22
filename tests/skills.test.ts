@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { db } from 'sdk';
 import { getUserSkillText, recordSkillUsed } from '../src/services/skills.service.js';
-import type { GameSessionRecord, UserStatRecord } from '../src/types/models.js';
+import type { UserStatRecord, SkillUserRecord } from '../src/types/models.js';
 
-let mockGameSessions: Record<string, GameSessionRecord> = {};
 let mockUserStats: Record<string, UserStatRecord> = {};
+let mockSkillUsers: Record<string, SkillUserRecord> = {};
 
 describe('Skills Service', () => {
   beforeEach(() => {
-    mockGameSessions = {};
     mockUserStats = {};
+    mockSkillUsers = {};
 
     vi.spyOn(db, 'insert').mockImplementation(
       (tbl: { name?: string }) =>
@@ -17,18 +17,13 @@ describe('Skills Service', () => {
           values: (val: Record<string, unknown>) => ({
             onConflictDoUpdate: (opts: { set?: Record<string, unknown> }) => ({
               run: async () => {
-                if (tbl && tbl.name === 'chat_game_sessions') {
-                  const updated = {
-                    ...(mockGameSessions[val.chatId as string] || {}),
-                    ...val,
-                    ...(opts.set || {}),
-                  };
-                  mockGameSessions[val.chatId as string] = updated as GameSessionRecord;
-                }
                 if (tbl && tbl.name === 'chat_user_stats') {
                   const updated = { ...val, ...(opts.set || {}) };
                   mockUserStats[`${val.chatId}_${val.userId}`] =
                     updated as unknown as UserStatRecord;
+                }
+                if (tbl && tbl.name === 'chat_skill_users') {
+                  mockSkillUsers[`${val.chatId}_${val.userId}`] = val as unknown as SkillUserRecord;
                 }
               },
             }),
@@ -42,9 +37,8 @@ describe('Skills Service', () => {
           from: (tbl: { name?: string }) => ({
             where: () => ({
               run: async () => {
-                if (tbl && tbl.name === 'chat_game_sessions')
-                  return Object.values(mockGameSessions);
                 if (tbl && tbl.name === 'chat_user_stats') return Object.values(mockUserStats);
+                if (tbl && tbl.name === 'chat_skill_users') return Object.values(mockSkillUsers);
                 return [];
               },
             }),
@@ -82,16 +76,6 @@ describe('Skills Service', () => {
       wins: 0,
     } as unknown as UserStatRecord;
 
-    mockGameSessions['chat1'] = {
-      chatId: 'chat1',
-      isActive: true,
-      lastUserId: 'user1',
-      sessionMessagesCount: 10,
-      sessionEndedAt: null,
-      skillUserIds: JSON.stringify(['user2']),
-      warnedUserIds: JSON.stringify(['user3']),
-    } as unknown as GameSessionRecord;
-
     const res = await getUserSkillText('chat1', 'user1');
     expect(res).not.toBeNull();
     expect(res!.alreadyUsed).toBe(false);
@@ -106,15 +90,10 @@ describe('Skills Service', () => {
       wins: 0,
     } as unknown as UserStatRecord;
 
-    mockGameSessions['chat1'] = {
+    mockSkillUsers['chat1_user1'] = {
       chatId: 'chat1',
-      isActive: true,
-      lastUserId: 'user2',
-      sessionMessagesCount: 10,
-      sessionEndedAt: null,
-      skillUserIds: JSON.stringify(['user1']),
-      warnedUserIds: JSON.stringify([]),
-    } as unknown as GameSessionRecord;
+      userId: 'user1',
+    };
 
     const res = await getUserSkillText('chat1', 'user1');
     expect(res).not.toBeNull();
@@ -122,35 +101,8 @@ describe('Skills Service', () => {
   });
 
   it('records skill used for a user', async () => {
-    mockGameSessions['chat1'] = {
-      chatId: 'chat1',
-      isActive: true,
-      lastUserId: 'user2',
-      sessionMessagesCount: 10,
-      sessionEndedAt: null,
-      skillUserIds: JSON.stringify([]),
-      warnedUserIds: JSON.stringify([]),
-    } as unknown as GameSessionRecord;
-
     await recordSkillUsed('chat1', 'user1');
-
-    expect(mockGameSessions['chat1'].skillUserIds).toBe(JSON.stringify(['user1']));
-  });
-
-  it('does not duplicate skill usage for same user', async () => {
-    mockGameSessions['chat1'] = {
-      chatId: 'chat1',
-      isActive: true,
-      lastUserId: 'user2',
-      sessionMessagesCount: 10,
-      sessionEndedAt: null,
-      skillUserIds: JSON.stringify(['user1']),
-      warnedUserIds: JSON.stringify([]),
-    } as unknown as GameSessionRecord;
-
-    await recordSkillUsed('chat1', 'user1');
-
-    expect(mockGameSessions['chat1'].skillUserIds).toBe(JSON.stringify(['user1']));
+    expect(mockSkillUsers['chat1_user1']).toBeDefined();
   });
 
   it('returns null for invalid class index', async () => {

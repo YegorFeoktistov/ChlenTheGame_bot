@@ -42,8 +42,19 @@ sqlite.exec(`
     is_active INTEGER DEFAULT 0,
     last_user_id TEXT,
     session_messages_count INTEGER DEFAULT 0,
-    session_ended_at INTEGER,
-    warned_user_ids TEXT DEFAULT '[]'
+    session_ended_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_warned_users (
+    chat_id TEXT,
+    user_id TEXT,
+    PRIMARY KEY (chat_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_skill_users (
+    chat_id TEXT,
+    user_id TEXT,
+    PRIMARY KEY (chat_id, user_id)
   );
 
   CREATE TABLE IF NOT EXISTS chat_longest_sessions (
@@ -145,11 +156,29 @@ var chatGameSessions = table("chat_game_sessions", {
   // 0 = false, 1 = true
   lastUserId: text("last_user_id"),
   sessionMessagesCount: integer("session_messages_count").default(0),
-  sessionEndedAt: integer("session_ended_at"),
+  sessionEndedAt: integer("session_ended_at")
   // Unix timestamp in seconds for 10s cooldown
-  warnedUserIds: text("warned_user_ids").default("[]")
-  // JSON array string
 });
+var chatWarnedUsers = table(
+  "chat_warned_users",
+  {
+    chatId: text("chat_id"),
+    userId: text("user_id")
+  },
+  (t) => ({
+    pk: primaryKey(t.chatId, t.userId)
+  })
+);
+var chatSkillUsers = table(
+  "chat_skill_users",
+  {
+    chatId: text("chat_id"),
+    userId: text("user_id")
+  },
+  (t) => ({
+    pk: primaryKey(t.chatId, t.userId)
+  })
+);
 var chatLongestSessions = table("chat_longest_sessions", {
   chatId: text("chat_id").primaryKey(),
   messagesCount: integer("messages_count"),
@@ -161,8 +190,10 @@ var chatLongestSessions = table("chat_longest_sessions", {
 export {
   chatGameSessions,
   chatLongestSessions,
+  chatSkillUsers,
   chatSubscribers,
   chatUserStats,
+  chatWarnedUsers,
   chats,
   users
 };

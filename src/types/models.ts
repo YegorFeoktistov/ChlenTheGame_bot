@@ -32,8 +32,16 @@ export interface GameSessionRecord {
   lastUserId: string | null;
   sessionMessagesCount: number;
   sessionEndedAt: number | null;
-  warnedUserIds: string;
-  skillUserIds: string;
+}
+
+export interface WarnedUserRecord {
+  chatId: string;
+  userId: string;
+}
+
+export interface SkillUserRecord {
+  chatId: string;
+  userId: string;
 }
 
 export interface LongestSessionRecord {

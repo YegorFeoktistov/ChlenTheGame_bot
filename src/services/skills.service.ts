@@ -1,8 +1,8 @@
 import { db } from 'sdk';
-import { chatGameSessions, chatUserStats } from '../schema.js';
+import { chatUserStats, chatSkillUsers } from '../schema.js';
 import { eq, and } from 'sdk/db';
 import { CHLEN_CLASS_SKILLS, ChlenClass } from '../utils/constants.js';
-import type { GameSessionRecord } from '../types/models.js';
+import type { SkillUserRecord } from '../types/models.js';
 
 export async function getUserSkillText(
   chatId: string,
@@ -15,84 +15,32 @@ export async function getUserSkillText(
     .run()) as { classIndex: number | null }[];
 
   const classIndex = userStatsRows[0]?.classIndex;
-  const classValues = Object.values(ChlenClass).filter(
-    (v): v is ChlenClass => typeof v === 'string'
-  );
+  const classValues = Object.values(ChlenClass);
+
   if (!classIndex || classIndex < 1 || classIndex > classValues.length) {
     return null;
   }
 
   const skillText = CHLEN_CLASS_SKILLS[classValues[classIndex - 1]];
 
-  const sessionRows = (await db
+  const skillRows = (await db
     .select()
-    .from(chatGameSessions)
-    .where(eq(chatGameSessions.chatId, chatId))
-    .run()) as GameSessionRecord[];
+    .from(chatSkillUsers)
+    .where(and(eq(chatSkillUsers.chatId, chatId), eq(chatSkillUsers.userId, userId)))
+    .run()) as SkillUserRecord[];
 
-  const session = sessionRows[0];
-  if (!session) {
-    return { skillText, alreadyUsed: false };
-  }
-
-  const skillUserIds: string[] = [];
-  try {
-    if (session.skillUserIds) {
-      const parsed = JSON.parse(session.skillUserIds);
-      if (Array.isArray(parsed)) {
-        skillUserIds.push(...parsed);
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  const alreadyUsed = skillUserIds.includes(userId);
+  const alreadyUsed = skillRows && skillRows.length > 0;
 
   return { skillText, alreadyUsed };
 }
 
 export async function recordSkillUsed(chatId: string, userId: string): Promise<void> {
-  const sessionRows = (await db
-    .select()
-    .from(chatGameSessions)
-    .where(eq(chatGameSessions.chatId, chatId))
-    .run()) as GameSessionRecord[];
-
-  const session = sessionRows[0];
-  if (!session) {
-    return;
-  }
-
-  const skillUserIds: string[] = [];
-  try {
-    if (session.skillUserIds) {
-      const parsed = JSON.parse(session.skillUserIds);
-      if (Array.isArray(parsed)) {
-        skillUserIds.push(...parsed);
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  if (!skillUserIds.includes(userId)) {
-    skillUserIds.push(userId);
-    await db
-      .insert(chatGameSessions)
-      .values({
-        chatId,
-        isActive: session.isActive,
-        lastUserId: session.lastUserId,
-        sessionMessagesCount: session.sessionMessagesCount,
-        sessionEndedAt: session.sessionEndedAt,
-        warnedUserIds: session.warnedUserIds,
-        skillUserIds: JSON.stringify(skillUserIds),
-      })
-      .onConflictDoUpdate({
-        target: chatGameSessions.chatId,
-        set: { skillUserIds: JSON.stringify(skillUserIds) },
-      })
-      .run();
-  }
+  await db
+    .insert(chatSkillUsers)
+    .values({ chatId, userId })
+    .onConflictDoUpdate({
+      target: [chatSkillUsers.chatId, chatSkillUsers.userId],
+      set: { chatId, userId },
+    })
+    .run();
 }

@@ -52,11 +52,33 @@ export const chatGameSessions = table('chat_game_sessions', {
   lastUserId: text('last_user_id'),
   sessionMessagesCount: integer('session_messages_count').default(0),
   sessionEndedAt: integer('session_ended_at'), // Unix timestamp in seconds for 10s cooldown
-  warnedUserIds: text('warned_user_ids').default('[]'), // JSON array string
-  skillUserIds: text('skill_user_ids').default('[]'), // JSON array of user IDs who used their skill
 });
 
-// 6. Longest Game Session Records Per Chat
+// 6. Anti-Spam Warned Users Per Active Session (1NF/3NF Relational Table)
+export const chatWarnedUsers = table(
+  'chat_warned_users',
+  {
+    chatId: text('chat_id'),
+    userId: text('user_id'),
+  },
+  (t: TableColumns) => ({
+    pk: primaryKey(t.chatId, t.userId),
+  })
+);
+
+// 7. Users Who Used Skill In Active Session (1NF/3NF Relational Table)
+export const chatSkillUsers = table(
+  'chat_skill_users',
+  {
+    chatId: text('chat_id'),
+    userId: text('user_id'),
+  },
+  (t: TableColumns) => ({
+    pk: primaryKey(t.chatId, t.userId),
+  })
+);
+
+// 8. Longest Game Session Records Per Chat
 export const chatLongestSessions = table('chat_longest_sessions', {
   chatId: text('chat_id').primaryKey(),
   messagesCount: integer('messages_count'),
