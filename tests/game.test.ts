@@ -6,12 +6,15 @@ import type {
   UserStatRecord,
   LongestSessionRecord,
   WarnedUserRecord,
+  QueuePlayerRecord,
 } from '../src/types/models.js';
+import { CommandStatus } from '../src/utils/constants.js';
 
 let mockGameSessions: Record<string, GameSessionRecord> = {};
 let mockUserStats: Record<string, UserStatRecord> = {};
 let mockLongestSessions: Record<string, LongestSessionRecord> = {};
 let mockWarnedUsers: Record<string, WarnedUserRecord> = {};
+let mockQueuePlayers: Record<string, QueuePlayerRecord> = {};
 
 describe('Game Engine Service', () => {
   beforeEach(() => {
@@ -19,6 +22,7 @@ describe('Game Engine Service', () => {
     mockUserStats = {};
     mockLongestSessions = {};
     mockWarnedUsers = {};
+    mockQueuePlayers = {};
 
     vi.spyOn(db, 'insert').mockImplementation(
       (tbl: { name?: string }) =>
@@ -48,6 +52,11 @@ describe('Game Engine Service', () => {
                   mockWarnedUsers[`${val.chatId}_${val.userId}`] =
                     val as unknown as WarnedUserRecord;
                 }
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  const key = `${val.chatId}_${val.userId}`;
+                  const updated = { ...(mockQueuePlayers[key] || {}), ...val, ...(opts.set || {}) };
+                  mockQueuePlayers[key] = updated as QueuePlayerRecord;
+                }
               },
             }),
           }),
@@ -55,11 +64,16 @@ describe('Game Engine Service', () => {
     );
 
     vi.spyOn(db, 'delete').mockImplementation(
-      () =>
+      (tbl: { name?: string }) =>
         ({
           where: () => ({
             run: async () => {
-              mockWarnedUsers = {};
+              if (!tbl || tbl.name === 'chat_warned_users') {
+                mockWarnedUsers = {};
+              }
+              if (!tbl || tbl.name === 'chat_queue_players') {
+                mockQueuePlayers = {};
+              }
             },
           }),
         }) as unknown as ReturnType<typeof db.delete>
@@ -69,7 +83,7 @@ describe('Game Engine Service', () => {
       () =>
         ({
           from: (tbl: { name?: string }) => ({
-            where: () => ({
+            where: (cond?: unknown) => ({
               run: async () => {
                 if (tbl && tbl.name === 'chat_game_sessions')
                   return Object.values(mockGameSessions);
@@ -77,6 +91,19 @@ describe('Game Engine Service', () => {
                 if (tbl && tbl.name === 'chat_longest_sessions')
                   return Object.values(mockLongestSessions);
                 if (tbl && tbl.name === 'chat_warned_users') return Object.values(mockWarnedUsers);
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  const all = Object.values(mockQueuePlayers);
+                  if (cond && typeof cond === 'object') {
+                    const condStr = JSON.stringify(cond);
+                    if (condStr.includes('user1')) {
+                      return all.filter((p) => p.userId === 'user1');
+                    }
+                    if (condStr.includes('user2')) {
+                      return all.filter((p) => p.userId === 'user2');
+                    }
+                  }
+                  return all;
+                }
                 return [];
               },
             }),
@@ -85,9 +112,9 @@ describe('Game Engine Service', () => {
     );
   });
 
-  it('prevents winning on turn 1 of a new session', async () => {
+  it('prevents winning on turn 1 of a new session or on player first move', async () => {
     const res = await handleGameCommand('chat1', 'user1', 'Pasha', 0.05); // Winning roll (5%)
-    expect(res.status).toBe('success');
+    expect(res.status).toBe(CommandStatus.SUCCESS);
     expect(res.gameStarted).toBe(true);
     expect(res.gameEnded).toBe(false);
     expect(res.outcome).toBe('Член');
@@ -99,36 +126,108 @@ describe('Game Engine Service', () => {
 
     // Turn 2 by same user -> should get warning
     const warnRes = await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
-    expect(warnRes.status).toBe('warning');
+    expect(warnRes.status).toBe(CommandStatus.WARNING);
 
     // Repeat turn by same user -> ignored
     const ignoreRes = await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
-    expect(ignoreRes.status).toBe('ignored');
+    expect(ignoreRes.status).toBe(CommandStatus.IGNORED);
   });
 
   it('enforces 10-second cooldown between games', async () => {
-    // Start game (turn 1)
+    // Start game (turn 1 - Pasha 1st move)
     await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
-    // Turn 2 by user2 with winning roll
-    await handleGameCommand('chat1', 'user2', 'Yegor', 0.05);
+    // Turn 2 by user2 (Yegor 1st move)
+    await handleGameCommand('chat1', 'user2', 'Yegor', 0.5);
+    // Turn 3 by user1 (Pasha 2nd move with winning roll -> game ends)
+    await handleGameCommand('chat1', 'user1', 'Pasha', 0.05);
 
     // Attempt to start a new game immediately -> cooldown
     const res = await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
-    expect(res.status).toBe('session_cooldown');
+    expect(res.status).toBe(CommandStatus.SESSION_COOLDOWN);
   });
 
   it('updates stats and sets longest record on game win', async () => {
-    // Turn 1 (Pasha)
+    // Turn 1 (Pasha - 1st move)
     await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
-    // Turn 2 (Yegor)
+    // Turn 2 (Yegor - 1st move)
     await handleGameCommand('chat1', 'user2', 'Yegor', 0.5);
-    // Turn 3 (Pasha - winning roll)
+    // Turn 3 (Pasha - 2nd move - winning roll)
     const winRes = await handleGameCommand('chat1', 'user1', 'Pasha', 0.05);
 
-    expect(winRes.status).toBe('success');
+    expect(winRes.status).toBe(CommandStatus.SUCCESS);
     expect(winRes.gameEnded).toBe(true);
     expect(winRes.winnerName).toBe('Pasha');
     expect(winRes.turns).toBe(3);
     expect(winRes.newRecord).toBe(true);
+  });
+
+  it('prevents any user from winning on their very first move in a session', async () => {
+    // Turn 1 (Pasha - 1st move)
+    await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
+
+    // Turn 2 (Yegor joins - 1st move with winning roll 5%) -> CANNOT WIN
+    const yegorRes1 = await handleGameCommand('chat1', 'user2', 'Yegor', 0.05);
+    expect(yegorRes1.status).toBe(CommandStatus.SUCCESS);
+    expect(yegorRes1.gameEnded).toBe(false);
+    expect(yegorRes1.outcome).toBe('Член');
+
+    // Turn 3 (Pasha 2nd move - 0.5)
+    await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
+
+    // Turn 4 (Yegor 2nd move with winning roll 5%) -> WINS!
+    const yegorRes2 = await handleGameCommand('chat1', 'user2', 'Yegor', 0.05);
+    expect(yegorRes2.status).toBe(CommandStatus.SUCCESS);
+    expect(yegorRes2.gameEnded).toBe(true);
+    expect(yegorRes2.winnerName).toBe('Yegor');
+  });
+
+  it('prevents any user from winning on their very first move in non-strict mode', async () => {
+    // Non-strict mode
+    mockGameSessions = {};
+    mockQueuePlayers = {};
+    mockWarnedUsers = {};
+
+    vi.spyOn(db, 'select').mockImplementation(
+      () =>
+        ({
+          from: (tbl: { name?: string }) => ({
+            where: (cond?: unknown) => ({
+              run: async () => {
+                if (tbl && tbl.name === 'chats')
+                  return [{ id: 'chat1', title: 'Chat', queueMode: 0 }];
+                if (tbl && tbl.name === 'chat_game_sessions')
+                  return Object.values(mockGameSessions);
+                if (tbl && tbl.name === 'chat_user_stats') return Object.values(mockUserStats);
+                if (tbl && tbl.name === 'chat_longest_sessions')
+                  return Object.values(mockLongestSessions);
+                if (tbl && tbl.name === 'chat_warned_users') return Object.values(mockWarnedUsers);
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  const all = Object.values(mockQueuePlayers);
+                  if (cond && typeof cond === 'object') {
+                    const condStr = JSON.stringify(cond);
+                    if (condStr.includes('user1')) {
+                      return all.filter((p) => p.userId === 'user1');
+                    }
+                    if (condStr.includes('user2')) {
+                      return all.filter((p) => p.userId === 'user2');
+                    }
+                  }
+                  return all;
+                }
+                return [];
+              },
+            }),
+          }),
+        }) as unknown as ReturnType<typeof db.select>
+    );
+
+    // Turn 1 (Pasha - 1st move)
+    await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
+
+    // Turn 2 (Yegor joins - 1st move with winning roll 5%) -> CANNOT WIN IN NON-STRICT MODE
+    const yegorRes1 = await handleGameCommand('chat1', 'user2', 'Yegor', 0.05);
+    expect(yegorRes1.status).toBe(CommandStatus.SUCCESS);
+    expect(yegorRes1.gameEnded).toBe(false);
+    expect(yegorRes1.outcome).toBe('Член');
   });
 });

@@ -13,15 +13,53 @@ import type {
   LongestSessionRecord,
   WarnedUserRecord,
 } from '../types/models.js';
+import { CommandStatus, StrictTurnStatus } from '../utils/constants.js';
+import {
+  getQueueMode,
+  evaluateStrictTurn,
+  clearQueueSession,
+  registerSessionPlayer,
+} from './queue.service.js';
 
 export interface CommandResult {
-  status: 'ignored' | 'warning' | 'session_cooldown' | 'success';
+  status: CommandStatus;
   gameStarted?: boolean;
   outcome?: string;
   gameEnded?: boolean;
   winnerName?: string | null;
   turns?: number;
   newRecord?: boolean;
+  skippedUserName?: string;
+  nextUserName?: string;
+  order69UserName?: string;
+}
+
+/**
+ * Helper to handle warning logic for out-of-turn or consecutive move attempts.
+ */
+async function handleOutOfTurnWarning(chatId: string, userId: string): Promise<CommandResult> {
+  const warnedRows = (await db
+    .select()
+    .from(chatWarnedUsers)
+    .where(and(eq(chatWarnedUsers.chatId, chatId), eq(chatWarnedUsers.userId, userId)))
+    .run()) as WarnedUserRecord[];
+
+  const isWarned = warnedRows && warnedRows.length > 0;
+
+  if (isWarned) {
+    return { status: CommandStatus.IGNORED };
+  }
+
+  await db
+    .insert(chatWarnedUsers)
+    .values({ chatId, userId })
+    .onConflictDoUpdate({
+      target: [chatWarnedUsers.chatId, chatWarnedUsers.userId],
+      set: { chatId, userId },
+    })
+    .run();
+
+  return { status: CommandStatus.WARNING };
 }
 
 export async function handleGameCommand(
@@ -31,6 +69,7 @@ export async function handleGameCommand(
   rollOverride?: number
 ): Promise<CommandResult> {
   const nowUnix = Math.floor(Date.now() / 1000);
+  const queueMode = await getQueueMode(chatId);
 
   // Fetch or initialize chat session state
   const sessionRows = (await db
@@ -50,33 +89,49 @@ export async function handleGameCommand(
           sessionEndedAt: null,
         };
 
-  // 1. Turn order verification (consecutive moves check)
-  if (session.lastUserId && session.lastUserId === userId) {
-    const warnedRows = (await db
-      .select()
-      .from(chatWarnedUsers)
-      .where(and(eq(chatWarnedUsers.chatId, chatId), eq(chatWarnedUsers.userId, userId)))
-      .run()) as WarnedUserRecord[];
+  // 1. Unified 1st move evaluation for both Strict and Non-Strict modes
+  const isFirstMoveForUser = await registerSessionPlayer(chatId, userId, nowUnix);
 
-    const isWarned = warnedRows && warnedRows.length > 0;
+  // 2. Mode-specific turn order & anti-spam evaluation
+  if (queueMode === 1) {
+    const strictRes = await evaluateStrictTurn(
+      chatId,
+      userId,
+      userDisplayName,
+      nowUnix,
+      session.lastUserId
+    );
 
-    if (isWarned) {
-      return { status: 'ignored' };
-    } else {
-      await db
-        .insert(chatWarnedUsers)
-        .values({ chatId, userId })
-        .onConflictDoUpdate({
-          target: [chatWarnedUsers.chatId, chatWarnedUsers.userId],
-          set: { chatId, userId },
-        })
-        .run();
+    if (strictRes.status === StrictTurnStatus.EXCLUDED) {
+      return { status: CommandStatus.EXCLUDED };
+    }
 
-      return { status: 'warning' };
+    if (strictRes.status === StrictTurnStatus.ORDER_69) {
+      return {
+        status: CommandStatus.ORDER_69,
+        order69UserName: strictRes.order69UserDisplayName,
+      };
+    }
+
+    if (strictRes.status === StrictTurnStatus.TURN_SKIPPED) {
+      return {
+        status: CommandStatus.TURN_SKIPPED,
+        skippedUserName: strictRes.skippedUserDisplayName,
+        nextUserName: strictRes.nextUserDisplayName,
+      };
+    }
+
+    if (strictRes.status === StrictTurnStatus.OUT_OF_TURN_WARNING) {
+      return handleOutOfTurnWarning(chatId, userId);
+    }
+  } else {
+    // Non-strict mode consecutive move check
+    if (session.lastUserId && session.lastUserId === userId) {
+      return handleOutOfTurnWarning(chatId, userId);
     }
   }
 
-  // 2. Check 10-second session cooldown if starting a new game
+  // 3. Check 10-second session cooldown if starting a new game
   let gameStarted = false;
   let newRecord = false;
   let turns = 0;
@@ -85,7 +140,7 @@ export async function handleGameCommand(
     if (session.sessionEndedAt) {
       const elapsed = nowUnix - session.sessionEndedAt;
       if (elapsed < 10) {
-        return { status: 'session_cooldown' };
+        return { status: CommandStatus.SESSION_COOLDOWN };
       }
     }
     session.isActive = 1;
@@ -93,7 +148,7 @@ export async function handleGameCommand(
     gameStarted = true;
   }
 
-  // 3. Reset warned users list on valid turn or game start
+  // 4. Reset warned users list on valid turn or game start
   await db.delete(chatWarnedUsers).where(eq(chatWarnedUsers.chatId, chatId)).run();
 
   session.lastUserId = userId;
@@ -104,11 +159,11 @@ export async function handleGameCommand(
     session.sessionMessagesCount = (session.sessionMessagesCount || 0) + 1;
   }
 
-  // 4. Calculate roll outcome (10% chance to win, cannot win on turn 1)
+  // 5. Calculate roll outcome (10% chance to win; no player can win on their 1st turn)
   let outcome = 'Член';
   let gameEnded = false;
 
-  if (gameStarted) {
+  if (gameStarted || isFirstMoveForUser) {
     outcome = 'Член';
     gameEnded = false;
   } else {
@@ -121,8 +176,9 @@ export async function handleGameCommand(
       session.sessionEndedAt = nowUnix;
       turns = session.sessionMessagesCount;
 
-      // Reset skill usage for all players in this chat for next game
+      // Reset skill usage and queue for next game
       await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+      await clearQueueSession(chatId);
 
       // Update win count in leaderboard stats
       const userStatsRows = (await db
@@ -223,7 +279,7 @@ export async function handleGameCommand(
     .run();
 
   return {
-    status: 'success',
+    status: CommandStatus.SUCCESS,
     gameStarted,
     outcome,
     gameEnded,

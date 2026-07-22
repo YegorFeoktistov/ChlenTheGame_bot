@@ -2,6 +2,8 @@ import { db } from 'sdk';
 import { chats, users, chatSubscribers } from '../schema.js';
 import { eq, and } from 'sdk/db';
 
+import type { SubscriberRecord } from '../types/models.js';
+
 export function formatDisplayName(firstName: string, lastName?: string | null): string {
   let name = firstName || 'Игрок';
   if (lastName) {
@@ -84,10 +86,6 @@ export async function unsubscribeUser(chatId: string, userId: string): Promise<v
     .delete(chatSubscribers)
     .where(and(eq(chatSubscribers.chatId, chatId), eq(chatSubscribers.userId, userId)))
     .run();
-}
-
-interface SubscriberRecord {
-  username: string;
 }
 
 export async function getSubscribers(chatId: string): Promise<string[]> {

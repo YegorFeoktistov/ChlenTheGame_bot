@@ -5,6 +5,7 @@ import type { TableColumns } from './types/sdk.d.js';
 export const chats = table('chats', {
   id: text('id').primaryKey(), // Telegram chat ID as string
   title: text('title'),
+  queueMode: integer('queue_mode').default(1), // 1 = Strict (default), 0 = Non-strict
   createdAt: integer('created_at', { mode: 'timestamp' }),
 });
 
@@ -78,7 +79,23 @@ export const chatSkillUsers = table(
   })
 );
 
-// 8. Longest Game Session Records Per Chat
+// 8. Strict Queue Players Per Active Session (1NF/3NF Relational Table)
+export const chatQueuePlayers = table(
+  'chat_queue_players',
+  {
+    chatId: text('chat_id'),
+    userId: text('user_id'),
+    turnOrder: integer('turn_order'), // 1, 2, 3...
+    skipCount: integer('skip_count').default(0),
+    isExcluded: integer('is_excluded').default(0), // 0 = active, 1 = Order 69 excluded
+    lastTurnAt: integer('last_turn_at'), // Unix timestamp
+  },
+  (t: TableColumns) => ({
+    pk: primaryKey(t.chatId, t.userId),
+  })
+);
+
+// 9. Longest Game Session Records Per Chat
 export const chatLongestSessions = table('chat_longest_sessions', {
   chatId: text('chat_id').primaryKey(),
   messagesCount: integer('messages_count'),

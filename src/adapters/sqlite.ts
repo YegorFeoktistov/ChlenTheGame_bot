@@ -14,6 +14,7 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY,
     title TEXT,
+    queue_mode INTEGER DEFAULT 1,
     created_at INTEGER
   );
 
@@ -58,6 +59,16 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS chat_skill_users (
     chat_id TEXT,
     user_id TEXT,
+    PRIMARY KEY (chat_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_queue_players (
+    chat_id TEXT,
+    user_id TEXT,
+    turn_order INTEGER,
+    skip_count INTEGER DEFAULT 0,
+    is_excluded INTEGER DEFAULT 0,
+    last_turn_at INTEGER,
     PRIMARY KEY (chat_id, user_id)
   );
 

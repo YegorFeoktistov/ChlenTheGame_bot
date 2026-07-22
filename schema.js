@@ -10,6 +10,7 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY,
     title TEXT,
+    queue_mode INTEGER DEFAULT 1,
     created_at INTEGER
   );
 
@@ -54,6 +55,16 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS chat_skill_users (
     chat_id TEXT,
     user_id TEXT,
+    PRIMARY KEY (chat_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_queue_players (
+    chat_id TEXT,
+    user_id TEXT,
+    turn_order INTEGER,
+    skip_count INTEGER DEFAULT 0,
+    is_excluded INTEGER DEFAULT 0,
+    last_turn_at INTEGER,
     PRIMARY KEY (chat_id, user_id)
   );
 
@@ -114,6 +125,8 @@ var chats = table("chats", {
   id: text("id").primaryKey(),
   // Telegram chat ID as string
   title: text("title"),
+  queueMode: integer("queue_mode").default(1),
+  // 1 = Strict (default), 0 = Non-strict
   createdAt: integer("created_at", { mode: "timestamp" })
 });
 var users = table("users", {
@@ -179,6 +192,23 @@ var chatSkillUsers = table(
     pk: primaryKey(t.chatId, t.userId)
   })
 );
+var chatQueuePlayers = table(
+  "chat_queue_players",
+  {
+    chatId: text("chat_id"),
+    userId: text("user_id"),
+    turnOrder: integer("turn_order"),
+    // 1, 2, 3...
+    skipCount: integer("skip_count").default(0),
+    isExcluded: integer("is_excluded").default(0),
+    // 0 = active, 1 = Order 69 excluded
+    lastTurnAt: integer("last_turn_at")
+    // Unix timestamp
+  },
+  (t) => ({
+    pk: primaryKey(t.chatId, t.userId)
+  })
+);
 var chatLongestSessions = table("chat_longest_sessions", {
   chatId: text("chat_id").primaryKey(),
   messagesCount: integer("messages_count"),
@@ -190,6 +220,7 @@ var chatLongestSessions = table("chat_longest_sessions", {
 export {
   chatGameSessions,
   chatLongestSessions,
+  chatQueuePlayers,
   chatSkillUsers,
   chatSubscribers,
   chatUserStats,
