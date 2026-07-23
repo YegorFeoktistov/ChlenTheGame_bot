@@ -236,4 +236,28 @@ describe('Timer Service & Session Abort Engine', () => {
 
     expect(activeTimers.has('chat1')).toBe(true);
   });
+
+  it('ignores stale background timer callbacks after a valid turn resets the sequence', async () => {
+    // Schedule a timer (generates ID 1)
+    scheduleTurnTimeout('chat1', 15100);
+
+    // Simulate a turn being made by scheduling a new timer (generates ID 2)
+    scheduleTurnTimeout('chat1', 15100);
+
+    // Attempt to invoke the timeout callback with the STALE timer ID (1)
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: 1000,
+    };
+
+    // The stale ID is 1, but current active ID is 2
+    await processTurnTimeout('chat1', 1);
+
+    // Verify that player1 did NOT get skipped (skipCount remains 0)
+    expect(mockQueuePlayers['chat1_user1']?.skipCount).toBe(0);
+  });
 });

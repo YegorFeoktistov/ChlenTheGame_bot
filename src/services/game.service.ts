@@ -35,6 +35,7 @@ export interface CommandResult {
   order69UserName?: string;
   expectedUserName?: string;
   remainingSeconds?: number;
+  skippedPlayers?: { displayName: string; isExcluded: boolean; nextUserMention?: string }[];
 }
 
 /**
@@ -133,9 +134,32 @@ export async function handleGameCommand(
           sessionEndedAt: null,
         };
 
-  let isFirstMoveForUser = false;
+  let gameStarted = false;
 
-  // 1. Mode-specific turn order & anti-spam evaluation
+  // 1. Check 10-second session cooldown and initialize state if starting a new game
+  if (!session.isActive) {
+    if (session.sessionEndedAt) {
+      const elapsed = nowUnix - session.sessionEndedAt;
+      if (elapsed < 10) {
+        return { status: CommandStatus.SESSION_COOLDOWN };
+      }
+    }
+    // Clean up timers and database queue for a fresh game
+    await clearQueueSession(chatId);
+    await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+    clearTurnTimeout(chatId);
+
+    session.isActive = 1;
+    session.sessionEndedAt = null;
+    session.lastUserId = null;
+    session.sessionMessagesCount = 0;
+    gameStarted = true;
+  }
+
+  let isFirstMoveForUser = false;
+  let strictResSkips: { displayName: string; isExcluded: boolean; nextUserMention?: string }[] = [];
+
+  // 2. Mode-specific turn order & anti-spam evaluation
   if (queueMode === 1) {
     const strictRes = await evaluateStrictTurn(
       chatId,
@@ -144,6 +168,8 @@ export async function handleGameCommand(
       nowUnix,
       session.lastUserId
     );
+
+    strictResSkips = strictRes.skippedPlayers || [];
 
     if (strictRes.status === StrictTurnStatus.EXCLUDED) {
       return { status: CommandStatus.EXCLUDED };
@@ -174,24 +200,7 @@ export async function handleGameCommand(
 
       return {
         status: CommandStatus.ALL_EXCLUDED,
-        order69UserName: strictRes.order69UserDisplayName,
-      };
-    }
-
-    if (strictRes.status === StrictTurnStatus.ORDER_69) {
-      scheduleTurnTimeout(chatId);
-      return {
-        status: CommandStatus.ORDER_69,
-        order69UserName: strictRes.order69UserDisplayName,
-      };
-    }
-
-    if (strictRes.status === StrictTurnStatus.TURN_SKIPPED) {
-      scheduleTurnTimeout(chatId);
-      return {
-        status: CommandStatus.TURN_SKIPPED,
-        skippedUserName: strictRes.skippedUserDisplayName,
-        nextUserName: strictRes.nextUserMention,
+        skippedPlayers: strictResSkips,
       };
     }
 
@@ -201,6 +210,7 @@ export async function handleGameCommand(
         ...warnRes,
         expectedUserName: strictRes.expectedUserDisplayName,
         remainingSeconds: strictRes.remainingSeconds,
+        skippedPlayers: strictResSkips,
       };
     }
 
@@ -212,26 +222,11 @@ export async function handleGameCommand(
     if (session.lastUserId && session.lastUserId === userId) {
       return handleOutOfTurnWarning(chatId, userId);
     }
-
     isFirstMoveForUser = await registerNonStrictPlayer(chatId, userId, nowUnix);
   }
 
-  // 2. Check 10-second session cooldown if starting a new game
-  let gameStarted = false;
   let newRecord = false;
   let turns = 0;
-
-  if (!session.isActive) {
-    if (session.sessionEndedAt) {
-      const elapsed = nowUnix - session.sessionEndedAt;
-      if (elapsed < 10) {
-        return { status: CommandStatus.SESSION_COOLDOWN };
-      }
-    }
-    session.isActive = 1;
-    session.sessionEndedAt = null;
-    gameStarted = true;
-  }
 
   // 3. Reset warned users list on valid turn or game start
   await db.delete(chatWarnedUsers).where(eq(chatWarnedUsers.chatId, chatId)).run();
@@ -376,5 +371,6 @@ export async function handleGameCommand(
     winnerName: gameEnded ? userDisplayName : null,
     turns: gameEnded ? turns : 0,
     newRecord: gameEnded ? newRecord : false,
+    skippedPlayers: strictResSkips,
   };
 }

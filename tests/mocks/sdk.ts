@@ -22,6 +22,13 @@ export const db = {
       run: async () => [],
     }),
   }),
+  update: () => ({
+    set: () => ({
+      where: () => ({
+        run: async () => [],
+      }),
+    }),
+  }),
   delete: () => ({
     where: () => ({
       run: async () => [],

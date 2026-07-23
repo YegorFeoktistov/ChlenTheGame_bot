@@ -60,6 +60,30 @@ describe('Queue Service (Strict Queue Engine)', () => {
         }) as unknown as ReturnType<typeof db.delete>
     );
 
+    vi.spyOn(db, 'update').mockImplementation(
+      (tbl: { name?: string }) =>
+        ({
+          set: () => ({
+            where: (cond: any) => ({
+              run: async () => {
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  let insertAfterOrder = 0;
+                  if (cond && cond.values && cond.values.length >= 2) {
+                    insertAfterOrder = cond.values[1];
+                  }
+                  for (const key of Object.keys(mockQueuePlayers)) {
+                    const p = mockQueuePlayers[key];
+                    if (p && p.turnOrder > insertAfterOrder) {
+                      p.turnOrder += 1;
+                    }
+                  }
+                }
+              },
+            }),
+          }),
+        }) as unknown as ReturnType<typeof db.update>
+    );
+
     vi.spyOn(db, 'select').mockImplementation(
       () =>
         ({
@@ -67,7 +91,15 @@ describe('Queue Service (Strict Queue Engine)', () => {
             where: (cond?: unknown) => ({
               run: async () => {
                 if (tbl && tbl.name === 'chats') return Object.values(mockChats);
-                if (tbl && tbl.name === 'users') return Object.values(mockUsers);
+                if (tbl && tbl.name === 'users') {
+                  if (cond && typeof cond === 'object') {
+                    const condStr = JSON.stringify(cond);
+                    if (condStr.includes('user1')) return [mockUsers.user1];
+                    if (condStr.includes('user2')) return [mockUsers.user2];
+                    if (condStr.includes('user3')) return [mockUsers.user3];
+                  }
+                  return Object.values(mockUsers);
+                }
                 if (tbl && tbl.name === 'chat_queue_players') {
                   const all = Object.values(mockQueuePlayers);
                   if (cond && typeof cond === 'object') {
@@ -153,8 +185,13 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
     // Turn should be user1 next, but 18 seconds pass without user1 moving (> 15s)
     const resSkip = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user2');
-    expect(resSkip.status).toBe(StrictTurnStatus.TURN_SKIPPED);
-    expect(resSkip.skippedUserDisplayName).toBe('Yegor Feoktistov');
+    expect(resSkip.status).toBe(StrictTurnStatus.VALID);
+    expect(resSkip.skippedPlayers).toBeDefined();
+    expect(resSkip.skippedPlayers!.length).toBe(2);
+    expect(resSkip.skippedPlayers![0].displayName).toBe('Yegor Feoktistov');
+    expect(resSkip.skippedPlayers![0].isExcluded).toBe(false);
+    expect(resSkip.skippedPlayers![1].displayName).toBe('Pasha');
+    expect(resSkip.skippedPlayers![1].isExcluded).toBe(false);
   });
 
   it('excludes user permanently on 3rd turn skip (Order 69)', async () => {
@@ -179,8 +216,13 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
     // User1 times out again (> 15s) -> 3rd skip -> Order 69
     const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user2');
-    expect(res69.status).toBe(StrictTurnStatus.ORDER_69);
-    expect(res69.order69UserDisplayName).toBe('Yegor Feoktistov');
+    expect(res69.status).toBe(StrictTurnStatus.VALID);
+    expect(res69.skippedPlayers).toBeDefined();
+    expect(res69.skippedPlayers!.length).toBe(2);
+    expect(res69.skippedPlayers![0].displayName).toBe('Yegor Feoktistov');
+    expect(res69.skippedPlayers![0].isExcluded).toBe(true);
+    expect(res69.skippedPlayers![1].displayName).toBe('Pasha');
+    expect(res69.skippedPlayers![1].isExcluded).toBe(false);
   });
 
   it('rejects excluded players with excluded status', async () => {
@@ -218,5 +260,74 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
     await clearQueueSession('chat1');
     expect(Object.keys(mockQueuePlayers).length).toBe(0);
+  });
+
+  it('asserts correct shift alignment when a new player joins strict queue', async () => {
+    const now = 1000;
+    // Set up queue with user1 and user2
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now, // user1 played last
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now - 2, // user2 played earlier
+    };
+
+    // User3 (Aleh) joins.
+    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 2, 'user1');
+    expect(res.status).toBe(StrictTurnStatus.VALID);
+
+    // Verify User3 is inserted after User1 (the last player who played, turnOrder = 1)
+    // So User3 should get turnOrder = 2, and User2 should shift to turnOrder = 3
+    expect(mockQueuePlayers['chat1_user3']?.turnOrder).toBe(2);
+    expect(mockQueuePlayers['chat1_user2']?.turnOrder).toBe(3);
+
+    // Now evaluate who is expected next.
+    // Last player who played is User3 (lastTurnAt = 1002, turnOrder = 2).
+    // Expected next should be User2 (turnOrder = 3).
+    const nextCheck = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 4, 'user3');
+    // User1 should get out of turn warning because it is User2's turn
+    expect(nextCheck.status).toBe(StrictTurnStatus.OUT_OF_TURN_WARNING);
+    expect(nextCheck.expectedUserDisplayName).toBe('Pasha');
+  });
+
+  it('handles multiple skipped players when a new player joins after a long delay', async () => {
+    const now = 1000;
+    // Setup player1 and player2 in queue
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now - 5,
+    };
+
+    // 25 seconds pass. Both user1 and user2 should time out when user3 joins.
+    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 25, 'user1');
+    expect(res.status).toBe(StrictTurnStatus.VALID);
+    expect(res.skippedPlayers).toBeDefined();
+    expect(res.skippedPlayers!.length).toBe(2);
+    expect(res.skippedPlayers![0].displayName).toBe('Pasha');
+    expect(res.skippedPlayers![0].isExcluded).toBe(false);
+    expect(res.skippedPlayers![1].displayName).toBe('Yegor Feoktistov');
+    expect(res.skippedPlayers![1].isExcluded).toBe(false);
   });
 });

@@ -104,6 +104,50 @@ export const db = {
       },
     };
   },
+
+  update(tableObj: any) {
+    const tableName = tableObj.name;
+    let setObj: Record<string, any> = {};
+
+    return {
+      set(val: Record<string, any>) {
+        setObj = val;
+        return {
+          where(conditionObj: any) {
+            return {
+              run() {
+                const setKeys = Object.keys(setObj);
+                const setSqlParts: string[] = [];
+                const setParams: any[] = [];
+                for (const k of setKeys) {
+                  const v = setObj[k];
+                  const colName = decamelize(k);
+                  if (v && typeof v === 'object' && v.sql !== undefined) {
+                    setSqlParts.push(`${colName} = ${v.sql}`);
+                    if (v.params) setParams.push(...v.params);
+                  } else {
+                    setSqlParts.push(`${colName} = ?`);
+                    setParams.push(v);
+                  }
+                }
+
+                let whereClause = '';
+                const whereParams: any[] = [];
+                if (conditionObj) {
+                  whereClause = ` WHERE ${conditionObj.sql}`;
+                  if (conditionObj.params) whereParams.push(...conditionObj.params);
+                }
+
+                const sqlStr = `UPDATE ${tableName} SET ${setSqlParts.join(', ')}${whereClause}`;
+                const stmt = sqlite.prepare(sqlStr);
+                return stmt.run(...setParams, ...whereParams);
+              },
+            };
+          },
+        };
+      },
+    };
+  },
 };
 
 // DSL Functions for schema and queries
@@ -147,6 +191,21 @@ export function text(name: string) {
 
 export function primaryKey(...cols: any[]) {
   return { pk: cols };
+}
+
+export function sql(strings: TemplateStringsArray, ...values: any[]) {
+  let sqlStr = strings[0];
+  const params: any[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const val = values[i];
+    if (val && typeof val === 'object' && val.name) {
+      sqlStr += decamelize(val.name) + strings[i + 1];
+    } else {
+      sqlStr += '?' + strings[i + 1];
+      params.push(val);
+    }
+  }
+  return { sql: sqlStr, params };
 }
 
 export function eq(colObj: any, val: any) {

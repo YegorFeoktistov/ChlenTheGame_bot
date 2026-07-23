@@ -237,6 +237,31 @@ export default async function (message: TelegramMessage) {
 
   const res = await withChatLock(chatId, () => handleGameCommand(chatId, userId, userDisplayName));
 
+  // Notify the chat about any skipped/excluded players
+  if (res.skippedPlayers && res.skippedPlayers.length > 0) {
+    for (const skipped of res.skippedPlayers) {
+      if (skipped.isExcluded) {
+        await api.sendMessage({
+          chat_id: chatId,
+          text: `Обнаружен натурал - ${skipped.displayName}! Выполнить Приказ 69!`,
+        });
+        if (skipped.nextUserMention && res.status !== CommandStatus.ALL_EXCLUDED) {
+          await api.sendMessage({
+            chat_id: chatId,
+            text: `Ход переходит к ${skipped.nextUserMention}.`,
+          });
+        }
+      } else {
+        if (skipped.nextUserMention) {
+          await api.sendMessage({
+            chat_id: chatId,
+            text: `${skipped.displayName} - ты обронил Член!\nСледующим ходит ${skipped.nextUserMention}.`,
+          });
+        }
+      }
+    }
+  }
+
   if (res.status === CommandStatus.EXCLUDED) {
     await api.sendMessage({
       chat_id: chatId,
@@ -247,31 +272,9 @@ export default async function (message: TelegramMessage) {
   }
 
   if (res.status === CommandStatus.ALL_EXCLUDED) {
-    if (res.order69UserName) {
-      await api.sendMessage({
-        chat_id: chatId,
-        text: `Обнаружен натурал - ${res.order69UserName}! Выполнить Приказ 69!`,
-      });
-    }
     await api.sendMessage({
       chat_id: chatId,
       text: 'Все участники признаны натуралами! Вы расстроили Член. Игра окончена.',
-    });
-    return;
-  }
-
-  if (res.status === CommandStatus.ORDER_69) {
-    await api.sendMessage({
-      chat_id: chatId,
-      text: `Обнаружен натурал - ${res.order69UserName}! Выполнить Приказ 69!`,
-    });
-    return;
-  }
-
-  if (res.status === CommandStatus.TURN_SKIPPED) {
-    await api.sendMessage({
-      chat_id: chatId,
-      text: `${res.skippedUserName} - ты обронил Член!\nСледующим ходит ${res.nextUserName}.`,
     });
     return;
   }
