@@ -10,9 +10,10 @@ import type { GameSessionRecord, WarnedUserRecord } from '../types/models.js';
 import {
   CommandStatus,
   StrictTurnStatus,
-  GAME_WIN_CHANCE,
+  StatusEffectId,
   SESSION_COOLDOWN_SECONDS,
 } from '../utils/constants.js';
+import { getStatusEffects } from './statusEffects.service.js';
 import {
   getQueueMode,
   evaluateStrictTurn,
@@ -313,7 +314,12 @@ export async function handleGameCommand(
     gameEnded = false;
   } else {
     const roll = rollOverride !== undefined ? rollOverride : Math.random();
-    if (roll < GAME_WIN_CHANCE) {
+    const weaknessEffects = await getStatusEffects(chatId, userId);
+    const weaknessCount = weaknessEffects
+      .filter((e) => e.statusEffectId === StatusEffectId.WEAKNESS)
+      .reduce((sum, e) => sum + e.count, 0);
+    const winChance = 0.1 / Math.pow(2, weaknessCount);
+    if (roll < winChance) {
       outcome = 'Я победил';
       gameEnded = true;
       session.isActive = 0;

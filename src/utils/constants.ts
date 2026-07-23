@@ -1,3 +1,7 @@
+export enum StatusEffectId {
+  WEAKNESS = 'Членослабость',
+}
+
 export enum ChlenClass {
   CHLENOKNIZHNIK = 'Членокнижник',
   CHLENOMANT = 'Членомант',

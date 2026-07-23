@@ -10,11 +10,15 @@ import { handleGameCommand, abortGameSession } from '../services/game.service.js
 import { getLeaderboardText, getLongestSessionText } from '../services/stats.service.js';
 import { getClassesText, setUserClass, getUserClass } from '../services/class.service.js';
 import { pluralizeTurns, pluralizeSeconds } from '../utils/pluralize.js';
-import { getUserSkillText, recordSkillUsed } from '../services/skills.service.js';
+import {
+  getUserSkillText,
+  recordSkillUsed,
+  applyWeaknessToTarget,
+} from '../services/skills.service.js';
 import { getQueueMode, setQueueMode } from '../services/queue.service.js';
 import { chatGameSessions } from '../schema.js';
 import { eq } from 'sdk/db';
-import { CommandStatus } from '../utils/constants.js';
+import { CommandStatus, ChlenClass } from '../utils/constants.js';
 import { withChatLock } from '../utils/mutex.js';
 import type { TelegramMessage } from '../types/sdk.d.js';
 
@@ -160,6 +164,27 @@ export default async function (message: TelegramMessage) {
     }
 
     await recordSkillUsed(chatId, userId);
+
+    const skillClass = await getUserClass(chatId, userId);
+    if (skillClass === ChlenClass.CHLENOKNIZHNIK) {
+      const targetText = rawText.split(/\s+/).slice(1).join(' ').trim();
+      const targetResult = await applyWeaknessToTarget(chatId, userId, targetText);
+      if (!targetResult.success) {
+        await api.sendMessage({
+          chat_id: chatId,
+          text: targetResult.message,
+          reply_to_message_id: message.message_id,
+        });
+        return;
+      }
+      await api.sendMessage({
+        chat_id: chatId,
+        text: targetResult.message,
+        reply_to_message_id: message.message_id,
+      });
+      return;
+    }
+
     await api.sendMessage({
       chat_id: chatId,
       text: `${userDisplayName} использует способность: ${skillResult.skillText}`,

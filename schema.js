@@ -102,6 +102,20 @@ var migrations = [
         db.exec("ALTER TABLE chat_game_sessions ADD COLUMN current_turn_started_at INTEGER;");
       }
     }
+  },
+  {
+    name: "004_add_status_effect_users",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chat_status_effect_users (
+          chat_id TEXT,
+          user_id TEXT,
+          status_effect_id TEXT,
+          count INTEGER DEFAULT 1,
+          PRIMARY KEY (chat_id, user_id, status_effect_id)
+        );
+      `);
+    }
   }
 ];
 function runMigrations(db) {
@@ -268,6 +282,18 @@ var chatQueuePlayers = table(
     pk: primaryKey(t.chatId, t.userId)
   })
 );
+var chatStatusEffectUsers = table(
+  "chat_status_effect_users",
+  {
+    chatId: text("chat_id"),
+    userId: text("user_id"),
+    statusEffectId: text("status_effect_id"),
+    count: integer("count").default(1)
+  },
+  (t) => ({
+    pk: primaryKey(t.chatId, t.userId, t.statusEffectId)
+  })
+);
 var chatLongestSessions = table("chat_longest_sessions", {
   chatId: text("chat_id").primaryKey(),
   messagesCount: integer("messages_count"),
@@ -281,6 +307,7 @@ export {
   chatLongestSessions,
   chatQueuePlayers,
   chatSkillUsers,
+  chatStatusEffectUsers,
   chatSubscribers,
   chatUserStats,
   chatWarnedUsers,
