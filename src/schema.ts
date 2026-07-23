@@ -96,7 +96,21 @@ export const chatQueuePlayers = table(
   })
 );
 
-// 9. Longest Game Session Records Per Chat
+// 9. Status Effects Per Active Session (1NF/3NF Relational Table)
+export const chatStatusEffectUsers = table(
+  'chat_status_effect_users',
+  {
+    chatId: text('chat_id'),
+    userId: text('user_id'),
+    statusEffectId: text('status_effect_id'),
+    count: integer('count').default(1),
+  },
+  (t: TableColumns) => ({
+    pk: primaryKey(t.chatId, t.userId, t.statusEffectId),
+  })
+);
+
+// 10. Longest Game Session Records Per Chat
 export const chatLongestSessions = table('chat_longest_sessions', {
   chatId: text('chat_id').primaryKey(),
   messagesCount: integer('messages_count'),

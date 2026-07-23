@@ -106,6 +106,20 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: '004_add_status_effect_users',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chat_status_effect_users (
+          chat_id TEXT,
+          user_id TEXT,
+          status_effect_id TEXT,
+          count INTEGER DEFAULT 1,
+          PRIMARY KEY (chat_id, user_id, status_effect_id)
+        );
+      `);
+    },
+  },
 ];
 
 /**

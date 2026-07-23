@@ -26,10 +26,23 @@ describe('Database Migration Runner', () => {
     expect(tableNames).toContain('users');
     expect(tableNames).toContain('chat_queue_players');
     expect(tableNames).toContain('chat_warned_users');
+    expect(tableNames).toContain('chat_status_effect_users');
 
     const columns = db.pragma('table_info(chats)') as { name: string }[];
     const columnNames = columns.map((c) => c.name);
     expect(columnNames).toContain('queue_mode');
+  });
+
+  it('creates chat_status_effect_users with correct columns', () => {
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(chat_status_effect_users)') as { name: string }[];
+    const columnNames = columns.map((c) => c.name);
+
+    expect(columnNames).toContain('chat_id');
+    expect(columnNames).toContain('user_id');
+    expect(columnNames).toContain('status_effect_id');
+    expect(columnNames).toContain('count');
   });
 
   it('runs new migrations on existing database without re-running old ones', () => {
