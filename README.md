@@ -10,10 +10,12 @@ Modern, high-performance Node.js & TypeScript Telegram Bot for group chats runni
 3. **Ending the Game**: When a user rolls `Я победил`, the session ends with: `Член - игра окончена! Победитель - {name}`.
 4. **Queue Modes & Anti-Spam (`/chlenqueue`)**:
    - `/chlenqueue 1` (*Строгий Член*, default): Strict turn sequence enforced (`P1 -> P2 -> P3 -> P1...`).
-     - **10s Timeout**: If the turn player does not respond in 10s, their turn is skipped (`{name} - ты обронил Член!\nСледующим ходит {next_name}.`).
-     - **Order 69 Exclusion**: 3 skips in a session exclude the player (`Обнаружен натурал - {name}! Выполнить Приказ 69!`). Further attempts reply `Натуралам вход закрыт!`.
+     - **Proactive 15s Timeout**: If the turn player does not respond in 15s, their turn is automatically skipped (`{name} - ты обронил Член!\nСледующим ходит {@username}.`).
+     - **Order 69 Exclusion & Auto-End**: 3 skips in a session exclude the player (`Обнаружен натурал - {name}! Выполнить Приказ 69!`). If all session participants are excluded by Order 69, the session auto-terminates (`Все участники признаны натуралами! Вы расстроили Член. Игра окончена.`).
      - **Active Session Lock**: Changing mode during an active game is blocked with `Не мешай Члену работать!`.
    - `/chlenqueue 0` (*Нестрогий Член*): Standard anti-spam prevents consecutive turns by the same user (`Дождись очереди`).
+5. **Aborting Active Games (`/abortchlen`)**:
+   - `/abortchlen`: Aborts the active game session immediately (`Вы оборвали Член. Игра окончена.`). If no game is active, replies `Нет активного Члена.`.
 5. **Classes & Skills System**:
    - `/chlenclasses`: View available game classes (*Членокнижник*, *Членомант*, *Членодин*, *Охотник на Члены*, *Мастер тысячи Членов*).
    - `/becomechlen <1-5>`: Choose your game class.

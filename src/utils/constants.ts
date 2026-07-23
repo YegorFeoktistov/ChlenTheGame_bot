@@ -24,6 +24,7 @@ export enum CommandStatus {
   EXCLUDED = 'excluded',
   TURN_SKIPPED = 'turn_skipped',
   ORDER_69 = 'order_69',
+  ALL_EXCLUDED = 'all_excluded',
 }
 
 export enum StrictTurnStatus {
@@ -32,4 +33,5 @@ export enum StrictTurnStatus {
   OUT_OF_TURN_WARNING = 'out_of_turn_warning',
   TURN_SKIPPED = 'turn_skipped',
   ORDER_69 = 'order_69',
+  ALL_EXCLUDED = 'all_excluded',
 }

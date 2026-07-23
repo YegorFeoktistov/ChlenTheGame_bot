@@ -54,11 +54,28 @@ export async function getUserName(userId: string): Promise<string> {
   return 'Игрок';
 }
 
+export async function getUserMention(userId: string): Promise<string> {
+  const userRows = (await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .run()) as UserRecord[];
+
+  if (userRows && userRows.length > 0) {
+    const user = userRows[0];
+    if (user.username) {
+      const handle = user.username.replace(/^@+/, '');
+      return `@${handle}`;
+    }
+    return formatDisplayName(user.firstName, user.lastName);
+  }
+  return 'Игрок';
+}
+
 /**
- * Generalized session player registration for both strict & non-strict modes.
- * Registers player in session queue and returns whether this is their 1st move in session.
+ * Register player first move in non-strict mode without affecting strict turn order timestamps.
  */
-export async function registerSessionPlayer(
+export async function registerNonStrictPlayer(
   chatId: string,
   userId: string,
   nowUnix: number
@@ -72,20 +89,12 @@ export async function registerSessionPlayer(
   const isFirstMove = !existingRows || existingRows.length === 0;
 
   if (isFirstMove) {
-    const allRows = (await db
-      .select()
-      .from(chatQueuePlayers)
-      .where(eq(chatQueuePlayers.chatId, chatId))
-      .run()) as QueuePlayerRecord[];
-
-    const nextOrder = (allRows ? allRows.length : 0) + 1;
-
     await db
       .insert(chatQueuePlayers)
       .values({
         chatId,
         userId,
-        turnOrder: nextOrder,
+        turnOrder: 1,
         skipCount: 0,
         isExcluded: 0,
         lastTurnAt: nowUnix,
@@ -102,9 +111,117 @@ export async function registerSessionPlayer(
 
 export interface StrictTurnResult {
   status: StrictTurnStatus;
+  isFirstMove?: boolean;
   skippedUserDisplayName?: string;
-  nextUserDisplayName?: string;
+  nextUserMention?: string;
   order69UserDisplayName?: string;
+  expectedUserDisplayName?: string;
+  remainingSeconds?: number;
+}
+
+async function createOutOfTurnWarning(
+  expectedPlayer: QueuePlayerRecord | undefined,
+  userDisplayName: string,
+  nowUnix: number
+): Promise<StrictTurnResult> {
+  const expectedName = expectedPlayer ? await getUserName(expectedPlayer.userId) : userDisplayName;
+  const remainingSeconds =
+    expectedPlayer && expectedPlayer.lastTurnAt
+      ? Math.max(0, 15 - (nowUnix - expectedPlayer.lastTurnAt))
+      : 15;
+
+  return {
+    status: StrictTurnStatus.OUT_OF_TURN_WARNING,
+    expectedUserDisplayName: expectedName,
+    remainingSeconds,
+  };
+}
+
+export async function evaluateStrictTurnTimeout(chatId: string): Promise<StrictTurnResult> {
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const allQueueRows = (await db
+    .select()
+    .from(chatQueuePlayers)
+    .where(eq(chatQueuePlayers.chatId, chatId))
+    .run()) as QueuePlayerRecord[];
+
+  const activeQueue = (allQueueRows || [])
+    .filter((p) => !p.isExcluded)
+    .sort((a, b) => a.turnOrder - b.turnOrder);
+
+  if (activeQueue.length === 0) {
+    return { status: StrictTurnStatus.ALL_EXCLUDED };
+  }
+
+  let currentExpectedIdx = 0;
+  const lastTurnPlayers = activeQueue
+    .filter((p) => p.lastTurnAt !== null)
+    .sort((a, b) => (b.lastTurnAt || 0) - (a.lastTurnAt || 0));
+
+  if (lastTurnPlayers.length > 0) {
+    const lastPlayerId = lastTurnPlayers[0].userId;
+    const lastIdx = activeQueue.findIndex((p) => p.userId === lastPlayerId);
+    if (lastIdx !== -1) {
+      currentExpectedIdx = (lastIdx + 1) % activeQueue.length;
+    }
+  }
+
+  const expectedPlayer = activeQueue[currentExpectedIdx];
+  if (!expectedPlayer) {
+    return { status: StrictTurnStatus.ALL_EXCLUDED };
+  }
+
+  const maxLastTurnAt = (allQueueRows || []).reduce(
+    (max, p) => Math.max(max, p.lastTurnAt || 0),
+    0
+  );
+  const nextTurnAt = Math.max(nowUnix, maxLastTurnAt + 1);
+
+  const newSkipCount = expectedPlayer.skipCount + 1;
+  const isNowExcluded = newSkipCount >= 3 ? 1 : 0;
+
+  await db
+    .insert(chatQueuePlayers)
+    .values({
+      chatId,
+      userId: expectedPlayer.userId,
+      turnOrder: expectedPlayer.turnOrder,
+      skipCount: newSkipCount,
+      isExcluded: isNowExcluded,
+      lastTurnAt: nextTurnAt,
+    })
+    .onConflictDoUpdate({
+      target: [chatQueuePlayers.chatId, chatQueuePlayers.userId],
+      set: { skipCount: newSkipCount, isExcluded: isNowExcluded, lastTurnAt: nextTurnAt },
+    })
+    .run();
+
+  const skippedName = await getUserName(expectedPlayer.userId);
+  const remainingActive = activeQueue.filter((p) => p.userId !== expectedPlayer.userId);
+
+  if (isNowExcluded && remainingActive.length === 0) {
+    return {
+      status: StrictTurnStatus.ALL_EXCLUDED,
+      order69UserDisplayName: skippedName,
+    };
+  }
+
+  if (isNowExcluded) {
+    return {
+      status: StrictTurnStatus.ORDER_69,
+      order69UserDisplayName: skippedName,
+    };
+  }
+
+  const nextIdx = (currentExpectedIdx + 1) % activeQueue.length;
+  const nextPlayer = activeQueue[nextIdx];
+  const nextMention = nextPlayer ? await getUserMention(nextPlayer.userId) : skippedName;
+
+  return {
+    status: StrictTurnStatus.TURN_SKIPPED,
+    skippedUserDisplayName: skippedName,
+    nextUserMention: nextMention,
+  };
 }
 
 export async function evaluateStrictTurn(
@@ -128,11 +245,6 @@ export async function evaluateStrictTurn(
     return { status: StrictTurnStatus.EXCLUDED };
   }
 
-  // 2. Check consecutive move attempt by same user
-  if (lastUserId && lastUserId === userId) {
-    return { status: StrictTurnStatus.OUT_OF_TURN_WARNING };
-  }
-
   // Fetch all queue players for this chat ordered by turnOrder
   const allQueueRows = (await db
     .select()
@@ -150,8 +262,8 @@ export async function evaluateStrictTurn(
   );
   const nextTurnAt = Math.max(nowUnix, maxLastTurnAt + 1);
 
-  // If queue has 1 player (just registered), valid 1st turn
-  if (activeQueue.length <= 1) {
+  // If queue is empty, this user starts the queue as player #1
+  if (activeQueue.length === 0) {
     await db
       .insert(chatQueuePlayers)
       .values({
@@ -168,7 +280,7 @@ export async function evaluateStrictTurn(
       })
       .run();
 
-    return { status: StrictTurnStatus.VALID };
+    return { status: StrictTurnStatus.VALID, isFirstMove: true };
   }
 
   // Determine current expected turn player
@@ -185,77 +297,22 @@ export async function evaluateStrictTurn(
     }
   }
 
-  let expectedPlayer = activeQueue[currentExpectedIdx];
+  const expectedPlayer = activeQueue[currentExpectedIdx];
 
-  // 3. Check 10-second timeout for expectedPlayer
+  // Fail-safe check for 15-second timeout (delegates directly to evaluateStrictTurnTimeout)
   if (expectedPlayer && expectedPlayer.userId !== userId && expectedPlayer.lastTurnAt) {
     const elapsed = nowUnix - expectedPlayer.lastTurnAt;
-    if (elapsed > 10) {
-      // Expected player timed out! Increment skip count
-      const newSkipCount = expectedPlayer.skipCount + 1;
-      const isNowExcluded = newSkipCount >= 3 ? 1 : 0;
-
-      await db
-        .insert(chatQueuePlayers)
-        .values({
-          chatId,
-          userId: expectedPlayer.userId,
-          turnOrder: expectedPlayer.turnOrder,
-          skipCount: newSkipCount,
-          isExcluded: isNowExcluded,
-          lastTurnAt: nextTurnAt,
-        })
-        .onConflictDoUpdate({
-          target: [chatQueuePlayers.chatId, chatQueuePlayers.userId],
-          set: { skipCount: newSkipCount, isExcluded: isNowExcluded, lastTurnAt: nextTurnAt },
-        })
-        .run();
-
-      const skippedName = await getUserName(expectedPlayer.userId);
-
-      if (isNowExcluded) {
-        return {
-          status: StrictTurnStatus.ORDER_69,
-          order69UserDisplayName: skippedName,
-        };
-      }
-
-      // Next expected player after skip
-      const nextIdx = (currentExpectedIdx + 1) % activeQueue.length;
-      const nextPlayer = activeQueue[nextIdx];
-      const nextName = nextPlayer ? await getUserName(nextPlayer.userId) : userDisplayName;
-
-      return {
-        status: StrictTurnStatus.TURN_SKIPPED,
-        skippedUserDisplayName: skippedName,
-        nextUserDisplayName: nextName,
-      };
+    if (elapsed > 15) {
+      return await evaluateStrictTurnTimeout(chatId);
     }
   }
 
-  // Re-evaluate expected player after possible timeouts
-  if (expectedPlayer.userId === userId) {
-    // Valid turn! Update lastTurnAt
-    await db
-      .insert(chatQueuePlayers)
-      .values({
-        chatId,
-        userId,
-        turnOrder: expectedPlayer.turnOrder,
-        skipCount: expectedPlayer.skipCount,
-        isExcluded: 0,
-        lastTurnAt: nextTurnAt,
-      })
-      .onConflictDoUpdate({
-        target: [chatQueuePlayers.chatId, chatQueuePlayers.userId],
-        set: { lastTurnAt: nextTurnAt },
-      })
-      .run();
-
-    return { status: StrictTurnStatus.VALID };
+  // 2. Check consecutive move attempt by same user
+  if (lastUserId && lastUserId === userId) {
+    return await createOutOfTurnWarning(expectedPlayer, userDisplayName, nowUnix);
   }
 
-  // If user is not yet in active queue, append them to queue
+  // If user is not yet in active queue, append them to queue and allow their turn
   const isUserInQueue = activeQueue.some((p) => p.userId === userId);
   if (!isUserInQueue) {
     const nextOrder = (allQueueRows ? allQueueRows.length : 0) + 1;
@@ -275,9 +332,32 @@ export async function evaluateStrictTurn(
       })
       .run();
 
-    return { status: StrictTurnStatus.VALID };
+    return { status: StrictTurnStatus.VALID, isFirstMove: true };
+  }
+
+  // User is already in queue: check if it's their expected turn
+  if (expectedPlayer.userId === userId) {
+    // Valid turn! Update lastTurnAt
+    await db
+      .insert(chatQueuePlayers)
+      .values({
+        chatId,
+        userId,
+        turnOrder: expectedPlayer.turnOrder,
+        skipCount: expectedPlayer.skipCount,
+        isExcluded: 0,
+        lastTurnAt: nextTurnAt,
+      })
+      .onConflictDoUpdate({
+        target: [chatQueuePlayers.chatId, chatQueuePlayers.userId],
+        set: { lastTurnAt: nextTurnAt },
+      })
+      .run();
+
+    const isFirstMove = playerRecord ? playerRecord.lastTurnAt === null : false;
+    return { status: StrictTurnStatus.VALID, isFirstMove };
   }
 
   // Player is attempting out of turn move
-  return { status: StrictTurnStatus.OUT_OF_TURN_WARNING };
+  return await createOutOfTurnWarning(expectedPlayer, userDisplayName, nowUnix);
 }

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import messageHandler from './handlers/message.js';
+import { initTurnTimersOnStartup } from './services/timer.service.js';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ async function registerCommands() {
   console.log('Registering bot commands with Telegram...');
   const commands = [
     { command: 'chlen', description: 'Испытать удачу' },
+    { command: 'abortchlen', description: 'Прервать текущую игру' },
     { command: 'chlenboard', description: 'Таблица лидеров' },
     { command: 'longestchlen', description: 'Самая долгая игра' },
     { command: 'chlenclasses', description: 'Классы в игре' },
@@ -40,6 +42,7 @@ async function registerCommands() {
 
 async function startPolling() {
   await registerCommands();
+  await initTurnTimersOnStartup();
 
   console.log('Dropping pending updates...');
   let offset = 0;

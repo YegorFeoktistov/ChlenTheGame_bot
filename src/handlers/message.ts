@@ -6,10 +6,10 @@ import {
   unsubscribeUser,
   getSubscribers,
 } from '../services/user.service.js';
-import { handleGameCommand } from '../services/game.service.js';
+import { handleGameCommand, abortGameSession } from '../services/game.service.js';
 import { getLeaderboardText, getLongestSessionText } from '../services/stats.service.js';
 import { getClassesText, setUserClass, getUserClass } from '../services/class.service.js';
-import { pluralizeTurns } from '../utils/pluralize.js';
+import { pluralizeTurns, pluralizeSeconds } from '../utils/pluralize.js';
 import { getUserSkillText, recordSkillUsed } from '../services/skills.service.js';
 import { getQueueMode, setQueueMode } from '../services/queue.service.js';
 import { chatGameSessions } from '../schema.js';
@@ -215,7 +215,20 @@ export default async function (message: TelegramMessage) {
     return;
   }
 
-  // 11. Command /chlen OR plain text "член" / "chlen"
+  // 11. Command /abortchlen
+  if (lowerText.startsWith('/abortchlen')) {
+    await withChatLock(chatId, async () => {
+      const { wasActive } = await abortGameSession(chatId);
+      if (wasActive) {
+        await api.sendMessage({ chat_id: chatId, text: 'Вы оборвали Член. Игра окончена.' });
+      } else {
+        await api.sendMessage({ chat_id: chatId, text: 'Нет активного Члена.' });
+      }
+    });
+    return;
+  }
+
+  // 12. Command /chlen OR plain text "член" / "chlen"
   const isChlenCommand =
     lowerText.startsWith('/chlen') || lowerText === 'член' || lowerText === 'chlen';
   if (!isChlenCommand) {
@@ -229,6 +242,20 @@ export default async function (message: TelegramMessage) {
       chat_id: chatId,
       text: 'Натуралам вход закрыт!',
       reply_to_message_id: message.message_id,
+    });
+    return;
+  }
+
+  if (res.status === CommandStatus.ALL_EXCLUDED) {
+    if (res.order69UserName) {
+      await api.sendMessage({
+        chat_id: chatId,
+        text: `Обнаружен натурал - ${res.order69UserName}! Выполнить Приказ 69!`,
+      });
+    }
+    await api.sendMessage({
+      chat_id: chatId,
+      text: 'Все участники признаны натуралами! Вы расстроили Член. Игра окончена.',
     });
     return;
   }
@@ -254,9 +281,13 @@ export default async function (message: TelegramMessage) {
   }
 
   if (res.status === CommandStatus.WARNING) {
+    let text = 'Дождись очереди.';
+    if (res.expectedUserName && res.remainingSeconds !== undefined) {
+      text = `Дождись очереди. Сейчас ходит ${res.expectedUserName} (осталось ${pluralizeSeconds(res.remainingSeconds)}).`;
+    }
     await api.sendMessage({
       chat_id: chatId,
-      text: 'Дождись очереди',
+      text,
       reply_to_message_id: message.message_id,
     });
     return;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pluralizeTurns, pluralizeWins } from '../src/utils/pluralize.js';
+import { pluralizeTurns, pluralizeWins, pluralizeSeconds } from '../src/utils/pluralize.js';
 
 describe('Pluralize Helpers', () => {
   it('correctly pluralizes Russian turns (хода / ходов)', () => {
@@ -22,5 +22,17 @@ describe('Pluralize Helpers', () => {
     expect(pluralizeWins(21)).toBe('21 победа');
     expect(pluralizeWins(22)).toBe('22 победы');
     expect(pluralizeWins(30)).toBe('30 побед');
+  });
+
+  it('correctly pluralizes Russian seconds (секунда / секунды / секунд)', () => {
+    expect(pluralizeSeconds(1)).toBe('1 секунду');
+    expect(pluralizeSeconds(2)).toBe('2 секунды');
+    expect(pluralizeSeconds(4)).toBe('4 секунды');
+    expect(pluralizeSeconds(5)).toBe('5 секунд');
+    expect(pluralizeSeconds(11)).toBe('11 секунд');
+    expect(pluralizeSeconds(15)).toBe('15 секунд');
+    expect(pluralizeSeconds(21)).toBe('21 секунду');
+    expect(pluralizeSeconds(22)).toBe('22 секунды');
+    expect(pluralizeSeconds(30)).toBe('30 секунд');
   });
 });

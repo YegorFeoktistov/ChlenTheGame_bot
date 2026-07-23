@@ -5,6 +5,7 @@ import {
   setQueueMode,
   clearQueueSession,
   evaluateStrictTurn,
+  registerNonStrictPlayer,
 } from '../src/services/queue.service.js';
 import type { ChatRecord, QueuePlayerRecord, UserRecord } from '../src/types/models.js';
 import { StrictTurnStatus } from '../src/utils/constants.js';
@@ -63,12 +64,20 @@ describe('Queue Service (Strict Queue Engine)', () => {
       () =>
         ({
           from: (tbl: { name?: string }) => ({
-            where: () => ({
+            where: (cond?: unknown) => ({
               run: async () => {
                 if (tbl && tbl.name === 'chats') return Object.values(mockChats);
                 if (tbl && tbl.name === 'users') return Object.values(mockUsers);
-                if (tbl && tbl.name === 'chat_queue_players')
-                  return Object.values(mockQueuePlayers);
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  const all = Object.values(mockQueuePlayers);
+                  if (cond && typeof cond === 'object') {
+                    const condStr = JSON.stringify(cond);
+                    if (condStr.includes('user1')) return all.filter((p) => p.userId === 'user1');
+                    if (condStr.includes('user2')) return all.filter((p) => p.userId === 'user2');
+                    if (condStr.includes('user3')) return all.filter((p) => p.userId === 'user3');
+                  }
+                  return all;
+                }
                 return [];
               },
             }),
@@ -91,23 +100,59 @@ describe('Queue Service (Strict Queue Engine)', () => {
     // Turn 1 by user1
     const res1 = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', now, null);
     expect(res1.status).toBe(StrictTurnStatus.VALID);
+    expect(res1.isFirstMove).toBe(true);
 
-    // Turn 2 by user2
-    const res2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 1, 'user1');
+    // Turn 2 by user2 (joining mid-game)
+    const res2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user1');
     expect(res2.status).toBe(StrictTurnStatus.VALID);
+    expect(res2.isFirstMove).toBe(true);
 
-    // Attempt out of turn move by user2 -> warning
-    const resWarn = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user2');
+    // Turn 3 by user1 (2nd move in strict sequence)
+    const res3 = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', now + 4, 'user2');
+    expect(res3.status).toBe(StrictTurnStatus.VALID);
+    expect(res3.isFirstMove).toBe(false);
+
+    // Attempt out of turn move by user1 -> warning
+    const resWarn = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor Feoktistov',
+      now + 5,
+      'user1'
+    );
     expect(resWarn.status).toBe(StrictTurnStatus.OUT_OF_TURN_WARNING);
   });
 
-  it('handles 10-second turn timeout and skips turn', async () => {
+  it('handles 3-player round-robin sequence (user1 -> user2 -> user3 -> user1)', async () => {
+    const now = 1000;
+    // user1 starts
+    const r1 = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now, null);
+    expect(r1.status).toBe(StrictTurnStatus.VALID);
+
+    // user2 joins
+    const r2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user1');
+    expect(r2.status).toBe(StrictTurnStatus.VALID);
+
+    // user3 joins
+    const r3 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 4, 'user2');
+    expect(r3.status).toBe(StrictTurnStatus.VALID);
+
+    // user1 turn 2 -> expected!
+    const r4 = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 6, 'user3');
+    expect(r4.status).toBe(StrictTurnStatus.VALID);
+
+    // user2 turn 2 -> expected!
+    const r5 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 8, 'user1');
+    expect(r5.status).toBe(StrictTurnStatus.VALID);
+  });
+
+  it('handles 15-second turn timeout and skips turn', async () => {
     const now = 1000;
     await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', now, null);
     await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 1, 'user1');
 
-    // Turn should be user1 next, but 12 seconds pass without user1 moving
-    const resSkip = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 15, 'user2');
+    // Turn should be user1 next, but 18 seconds pass without user1 moving (> 15s)
+    const resSkip = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user2');
     expect(resSkip.status).toBe(StrictTurnStatus.TURN_SKIPPED);
     expect(resSkip.skippedUserDisplayName).toBe('Yegor Feoktistov');
   });
@@ -132,8 +177,8 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: now + 1,
     };
 
-    // User1 times out again (> 10s) -> 3rd skip -> Order 69
-    const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 15, 'user2');
+    // User1 times out again (> 15s) -> 3rd skip -> Order 69
+    const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user2');
     expect(res69.status).toBe(StrictTurnStatus.ORDER_69);
     expect(res69.order69UserDisplayName).toBe('Yegor Feoktistov');
   });
@@ -150,6 +195,15 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
     const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', 1050, 'user2');
     expect(res.status).toBe(StrictTurnStatus.EXCLUDED);
+  });
+
+  it('registers non-strict player correctly on first move', async () => {
+    const now = 1000;
+    const isFirst1 = await registerNonStrictPlayer('chat1', 'user1', now);
+    expect(isFirst1).toBe(true);
+
+    const isFirst2 = await registerNonStrictPlayer('chat1', 'user1', now + 5);
+    expect(isFirst2).toBe(false);
   });
 
   it('clears queue session correctly', async () => {

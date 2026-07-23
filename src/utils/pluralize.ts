@@ -1,19 +1,44 @@
-export function pluralizeTurns(n: number): string {
-  if (n % 10 === 1 && n % 100 !== 11) {
-    return `${n} ход`;
-  } else if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) {
-    return `${n} хода`;
-  } else {
-    return `${n} ходов`;
+export function pluralizeTurns(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod100 >= 11 && mod100 <= 19) {
+    return `${count} ходов`;
   }
+  if (mod10 === 1) {
+    return `${count} ход`;
+  }
+  if (mod10 >= 2 && mod10 <= 4) {
+    return `${count} хода`;
+  }
+  return `${count} ходов`;
 }
 
-export function pluralizeWins(n: number): string {
-  if (n % 10 === 1 && n % 100 !== 11) {
-    return `${n} победа`;
-  } else if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) {
-    return `${n} победы`;
-  } else {
-    return `${n} побед`;
+export function pluralizeWins(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod100 >= 11 && mod100 <= 19) {
+    return `${count} побед`;
   }
+  if (mod10 === 1) {
+    return `${count} победа`;
+  }
+  if (mod10 >= 2 && mod10 <= 4) {
+    return `${count} победы`;
+  }
+  return `${count} побед`;
+}
+
+export function pluralizeSeconds(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod100 >= 11 && mod100 <= 19) {
+    return `${count} секунд`;
+  }
+  if (mod10 === 1) {
+    return `${count} секунду`;
+  }
+  if (mod10 >= 2 && mod10 <= 4) {
+    return `${count} секунды`;
+  }
+  return `${count} секунд`;
 }
