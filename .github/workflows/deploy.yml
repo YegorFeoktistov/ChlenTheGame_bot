@@ -1,0 +1,26 @@
+name: CD (Deployment)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_PORT || 22 }}
+          script: |
+            cd ${{ secrets.VM_PROJECT_PATH }}
+            git switch main
+            git fetch origin main
+            git reset --hard origin/main
+            npm ci
+            npm run build
+            sudo systemctl restart chlenbot-node
