@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test-and-build:
@@ -50,7 +50,9 @@ jobs:
           port: ${{ secrets.VM_PORT || 22 }}
           script: |
             cd ${{ secrets.VM_PROJECT_PATH }}
-            git pull origin main
+            git switch main
+            git fetch origin main
+            git reset --hard origin/main
             npm ci
             npm run build
             sudo systemctl restart chlenbot-node
