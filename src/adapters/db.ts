@@ -228,6 +228,17 @@ export function desc(colObj: any) {
   return { column: colName, dir: 'DESC' };
 }
 
+export function sql(strings: TemplateStringsArray, ...values: any[]) {
+  let result = '';
+  for (let i = 0; i < strings.length; i++) {
+    result += strings[i];
+    if (i < values.length) {
+      result += values[i];
+    }
+  }
+  return { sql: result, params: [] };
+}
+
 function camelizeKeys(obj: Record<string, any>): Record<string, any> {
   const res: Record<string, any> = {};
   for (const [key, val] of Object.entries(obj)) {
