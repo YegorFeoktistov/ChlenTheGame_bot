@@ -18,9 +18,31 @@ jobs:
           port: ${{ secrets.VM_PORT || 22 }}
           script: |
             cd ${{ secrets.VM_PROJECT_PATH }}
+            
+            # 1. Stop the bot service (closes SQLite connections and flushes WAL to chlenbot.db)
+            sudo systemctl stop chlenbot-node || true
+            
+            # 2. Force SQLite checkpoint to merge and truncate WAL data
+            sqlite3 chlenbot.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
+            
+            # 3. Create database backup with timestamp and a temp file for restore
+            mkdir -p ../chlenbot_backups
+            if [ -f chlenbot.db ]; then
+              cp chlenbot.db ../chlenbot_backups/chlenbot_$(date +%F_%H-%M-%S).db
+              cp chlenbot.db chlenbot.db.tmp
+            fi
+            
+            # 3. Update the code from Git
             git switch main
             git fetch origin main
             git reset --hard origin/main
+            
+            # 4. Restore the database file if it was deleted/overwritten during git reset
+            if [ -f chlenbot.db.tmp ]; then
+              mv -f chlenbot.db.tmp chlenbot.db
+            fi
+            
+            # 5. Build and restart
             npm ci
             npm run build
-            sudo systemctl restart chlenbot-node
+            sudo systemctl start chlenbot-node

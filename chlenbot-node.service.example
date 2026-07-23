@@ -1,0 +1,42 @@
+# Example Systemd Service Configuration for Chlen: the Game Bot
+# 
+# How to install this service on a new VM:
+# 1. Copy this file to the systemd folder:
+#    sudo cp chlenbot-node.service.example /etc/systemd/system/chlenbot-node.service
+# 
+# 2. Edit the file to fit your paths, environment, and user (e.g., if using nvm or different path):
+#    sudo nano /etc/systemd/system/chlenbot-node.service
+# 
+# 3. Reload the systemd daemon:
+#    sudo systemctl daemon-reload
+# 
+# 4. Enable the service to launch automatically on boot:
+#    sudo systemctl enable chlenbot-node
+# 
+# 5. Start the service:
+#    sudo systemctl start chlenbot-node
+# 
+# 6. View logs in real-time:
+#    journalctl -u chlenbot-node -f
+
+[Unit]
+Description=Chlen: the Game Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ChlenTheGameBot
+# For standard global node installations: ExecStart=/usr/bin/node dist/index.js
+# For NVM installations, run 'which node' on the VM and use the absolute path:
+ExecStart=/home/ubuntu/.nvm/versions/node/v24.18.0/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+# If your bot requires other environment variables that are not in the .env file,
+# you can specify them here or load an env file:
+# EnvironmentFile=/home/ubuntu/ChlenTheGameBot/.env
+
+[Install]
+WantedBy=multi-user.target

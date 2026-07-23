@@ -7,6 +7,8 @@
 *.db-wal
 *.db-shm
 *.db-journal
+*.db.tmp
+*.db.bak
 
 # Node / TypeScript build, coverage & dependencies
 node_modules/
