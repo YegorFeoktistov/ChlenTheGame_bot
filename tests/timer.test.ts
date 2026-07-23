@@ -131,6 +131,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 5,
       sessionEndedAt: null,
+      currentTurnStartedAt: now,
     };
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',
@@ -156,6 +157,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 2,
       sessionEndedAt: null,
+      currentTurnStartedAt: now + 1,
     };
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',
@@ -189,6 +191,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 2,
       sessionEndedAt: null,
+      currentTurnStartedAt: now + 1,
     };
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',
@@ -230,6 +233,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastUserId: 'user1',
       sessionMessagesCount: 1,
       sessionEndedAt: null,
+      currentTurnStartedAt: 1000,
     };
 
     await initTurnTimersOnStartup();

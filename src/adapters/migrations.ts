@@ -96,6 +96,16 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: '003_add_current_turn_started_at_to_sessions',
+    up: (db) => {
+      const columns = db.pragma('table_info(chat_game_sessions)') as { name: string }[];
+      const hasCol = columns.some((c) => c.name === 'current_turn_started_at');
+      if (!hasCol) {
+        db.exec('ALTER TABLE chat_game_sessions ADD COLUMN current_turn_started_at INTEGER;');
+      }
+    },
+  },
 ];
 
 /**

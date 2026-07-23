@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "prepare": "husky",
     "deploy": "npm run typecheck && npm run lint && npm run test && npm run build && npx tgcloud push",
-    "migrate": "npx tgcloud migrate"
+    "migrate": "npx tgcloud migrate",
+    "sandbox": "tsup && node dist/sandbox.js"
   },
   "lint-staged": {
     "src/**/*.ts": [

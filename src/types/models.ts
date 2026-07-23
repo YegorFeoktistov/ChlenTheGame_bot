@@ -33,6 +33,7 @@ export interface GameSessionRecord {
   lastUserId: string | null;
   sessionMessagesCount: number;
   sessionEndedAt: number | null;
+  currentTurnStartedAt: number | null;
 }
 
 export interface WarnedUserRecord {

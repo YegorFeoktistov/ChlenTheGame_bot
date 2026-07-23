@@ -7,6 +7,7 @@ export default defineConfig({
     'handlers/message': 'src/handlers/message.ts',
     'handlers/import_data': 'src/handlers/import_data.ts',
     schema: 'src/schema.ts',
+    sandbox: 'src/sandbox.ts',
   },
   format: ['esm'],
   target: 'es2022',
