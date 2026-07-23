@@ -13,6 +13,10 @@ export const api = {
     parse_mode?: string;
     reply_to_message_id?: number;
   }) {
+    if (process.env.REPL_MODE === 'true') {
+      console.log(`\x1b[32m🤖 [Бот -> ${params.chat_id}]:\x1b[0m ${params.text}\n`);
+      return { ok: true, result: { message_id: Math.floor(Date.now() / 1000) } };
+    }
     if (!BOT_TOKEN) {
       console.warn('Warning: TELEGRAM_BOT_TOKEN is not set in .env');
       return;

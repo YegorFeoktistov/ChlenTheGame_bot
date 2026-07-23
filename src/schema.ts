@@ -53,6 +53,7 @@ export const chatGameSessions = table('chat_game_sessions', {
   lastUserId: text('last_user_id'),
   sessionMessagesCount: integer('session_messages_count').default(0),
   sessionEndedAt: integer('session_ended_at'), // Unix timestamp in seconds for 10s cooldown
+  currentTurnStartedAt: integer('current_turn_started_at'),
 });
 
 // 6. Anti-Spam Warned Users Per Active Session (1NF/3NF Relational Table)

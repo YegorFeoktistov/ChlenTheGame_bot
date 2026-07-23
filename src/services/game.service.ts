@@ -13,7 +13,12 @@ import type {
   LongestSessionRecord,
   WarnedUserRecord,
 } from '../types/models.js';
-import { CommandStatus, StrictTurnStatus } from '../utils/constants.js';
+import {
+  CommandStatus,
+  StrictTurnStatus,
+  GAME_WIN_CHANCE,
+  SESSION_COOLDOWN_SECONDS,
+} from '../utils/constants.js';
 import {
   getQueueMode,
   evaluateStrictTurn,
@@ -50,7 +55,7 @@ async function handleOutOfTurnWarning(chatId: string, userId: string): Promise<C
 
   const isWarned = warnedRows && warnedRows.length > 0;
 
-  if (isWarned) {
+  if (isWarned && process.env.REPL_MODE !== 'true') {
     return { status: CommandStatus.IGNORED };
   }
 
@@ -132,6 +137,7 @@ export async function handleGameCommand(
           lastUserId: null,
           sessionMessagesCount: 0,
           sessionEndedAt: null,
+          currentTurnStartedAt: null,
         };
 
   let gameStarted = false;
@@ -140,7 +146,7 @@ export async function handleGameCommand(
   if (!session.isActive) {
     if (session.sessionEndedAt) {
       const elapsed = nowUnix - session.sessionEndedAt;
-      if (elapsed < 10) {
+      if (elapsed < SESSION_COOLDOWN_SECONDS) {
         return { status: CommandStatus.SESSION_COOLDOWN };
       }
     }
@@ -153,6 +159,7 @@ export async function handleGameCommand(
     session.sessionEndedAt = null;
     session.lastUserId = null;
     session.sessionMessagesCount = 0;
+    session.currentTurnStartedAt = nowUnix;
     gameStarted = true;
   }
 
@@ -166,8 +173,16 @@ export async function handleGameCommand(
       userId,
       userDisplayName,
       nowUnix,
-      session.lastUserId
+      session.lastUserId,
+      session.currentTurnStartedAt
     );
+
+    if (strictRes.currentTurnStartedAt !== undefined) {
+      session.currentTurnStartedAt = strictRes.currentTurnStartedAt;
+    }
+    if (strictRes.lastUserId !== undefined) {
+      session.lastUserId = strictRes.lastUserId;
+    }
 
     strictResSkips = strictRes.skippedPlayers || [];
 
@@ -248,7 +263,7 @@ export async function handleGameCommand(
     gameEnded = false;
   } else {
     const roll = rollOverride !== undefined ? rollOverride : Math.random();
-    if (roll < 0.1) {
+    if (roll < GAME_WIN_CHANCE) {
       outcome = 'Я победил';
       gameEnded = true;
       session.isActive = 0;
@@ -347,6 +362,7 @@ export async function handleGameCommand(
       lastUserId: session.lastUserId,
       sessionMessagesCount: session.sessionMessagesCount,
       sessionEndedAt: session.sessionEndedAt,
+      currentTurnStartedAt: session.currentTurnStartedAt,
     })
     .onConflictDoUpdate({
       target: chatGameSessions.chatId,
@@ -355,6 +371,7 @@ export async function handleGameCommand(
         lastUserId: session.lastUserId,
         sessionMessagesCount: session.sessionMessagesCount,
         sessionEndedAt: session.sessionEndedAt,
+        currentTurnStartedAt: session.currentTurnStartedAt,
       },
     })
     .run();

@@ -35,3 +35,9 @@ export enum StrictTurnStatus {
   ORDER_69 = 'order_69',
   ALL_EXCLUDED = 'all_excluded',
 }
+
+export const GAME_WIN_CHANCE = 0.1;
+export const SESSION_COOLDOWN_SECONDS = 10;
+export const TURN_TIMEOUT_SECONDS = 15;
+export const TURN_TIMEOUT_MS = 15100;
+export const MAX_SKIP_COUNT = 3;

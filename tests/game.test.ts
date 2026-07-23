@@ -295,6 +295,7 @@ describe('Game Engine Service', () => {
       lastUserId: null,
       sessionMessagesCount: 0,
       sessionEndedAt: 1000,
+      currentTurnStartedAt: null,
     };
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',

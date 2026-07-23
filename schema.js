@@ -92,6 +92,16 @@ var migrations = [
         CREATE INDEX IF NOT EXISTS idx_chat_queue_players_chat_excluded ON chat_queue_players(chat_id, is_excluded);
       `);
     }
+  },
+  {
+    name: "003_add_current_turn_started_at_to_sessions",
+    up: (db) => {
+      const columns = db.pragma("table_info(chat_game_sessions)");
+      const hasCol = columns.some((c) => c.name === "current_turn_started_at");
+      if (!hasCol) {
+        db.exec("ALTER TABLE chat_game_sessions ADD COLUMN current_turn_started_at INTEGER;");
+      }
+    }
   }
 ];
 function runMigrations(db) {
@@ -217,8 +227,9 @@ var chatGameSessions = table("chat_game_sessions", {
   // 0 = false, 1 = true
   lastUserId: text("last_user_id"),
   sessionMessagesCount: integer("session_messages_count").default(0),
-  sessionEndedAt: integer("session_ended_at")
+  sessionEndedAt: integer("session_ended_at"),
   // Unix timestamp in seconds for 10s cooldown
+  currentTurnStartedAt: integer("current_turn_started_at")
 });
 var chatWarnedUsers = table(
   "chat_warned_users",

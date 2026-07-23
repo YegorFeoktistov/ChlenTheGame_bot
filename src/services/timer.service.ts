@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { chatGameSessions } from '../schema.js';
 import { eq } from 'sdk/db';
 import type { GameSessionRecord } from '../types/models.js';
-import { StrictTurnStatus } from '../utils/constants.js';
+import { StrictTurnStatus, TURN_TIMEOUT_MS } from '../utils/constants.js';
 import { getQueueMode, evaluateStrictTurnTimeout, clearQueueSession } from './queue.service.js';
 import { withChatLock } from '../utils/mutex.js';
 
@@ -19,7 +19,7 @@ export function clearTurnTimeout(chatId: string): void {
   activeTimerIds.delete(chatId);
 }
 
-export function scheduleTurnTimeout(chatId: string, delayMs = 15100): void {
+export function scheduleTurnTimeout(chatId: string, delayMs = TURN_TIMEOUT_MS): void {
   clearTurnTimeout(chatId);
 
   const myId = ++timerIdSequence;
@@ -132,7 +132,7 @@ export async function initTurnTimersOnStartup(): Promise<void> {
   for (const session of activeSessions) {
     const mode = await getQueueMode(session.chatId);
     if (mode === 1) {
-      scheduleTurnTimeout(session.chatId, 15100);
+      scheduleTurnTimeout(session.chatId, TURN_TIMEOUT_MS);
     }
   }
 }

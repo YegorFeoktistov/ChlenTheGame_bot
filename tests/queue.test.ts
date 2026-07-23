@@ -129,20 +129,39 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
   it('initializes queue on turn 1 and enforces strict turn order for subsequent turns', async () => {
     const now = 1000;
+    let turnStart: number | null = null;
+
     // Turn 1 by user1
-    const res1 = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', now, null);
+    const res1 = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor Feoktistov',
+      now,
+      null,
+      turnStart
+    );
     expect(res1.status).toBe(StrictTurnStatus.VALID);
     expect(res1.isFirstMove).toBe(true);
+    turnStart = res1.currentTurnStartedAt ?? null;
 
     // Turn 2 by user2 (joining mid-game)
-    const res2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user1');
+    const res2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user1', turnStart);
     expect(res2.status).toBe(StrictTurnStatus.VALID);
     expect(res2.isFirstMove).toBe(true);
+    turnStart = res2.currentTurnStartedAt ?? null;
 
     // Turn 3 by user1 (2nd move in strict sequence)
-    const res3 = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', now + 4, 'user2');
+    const res3 = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor Feoktistov',
+      now + 4,
+      'user2',
+      turnStart
+    );
     expect(res3.status).toBe(StrictTurnStatus.VALID);
     expect(res3.isFirstMove).toBe(false);
+    turnStart = res3.currentTurnStartedAt ?? null;
 
     // Attempt out of turn move by user1 -> warning
     const resWarn = await evaluateStrictTurn(
@@ -150,41 +169,64 @@ describe('Queue Service (Strict Queue Engine)', () => {
       'user1',
       'Yegor Feoktistov',
       now + 5,
-      'user1'
+      'user1',
+      turnStart
     );
     expect(resWarn.status).toBe(StrictTurnStatus.OUT_OF_TURN_WARNING);
   });
 
   it('handles 3-player round-robin sequence (user1 -> user2 -> user3 -> user1)', async () => {
     const now = 1000;
+    let turnStart: number | null = null;
     // user1 starts
-    const r1 = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now, null);
+    const r1 = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now, null, turnStart);
     expect(r1.status).toBe(StrictTurnStatus.VALID);
+    turnStart = r1.currentTurnStartedAt ?? null;
 
     // user2 joins
-    const r2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user1');
+    const r2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 2, 'user1', turnStart);
     expect(r2.status).toBe(StrictTurnStatus.VALID);
+    turnStart = r2.currentTurnStartedAt ?? null;
 
     // user3 joins
-    const r3 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 4, 'user2');
+    const r3 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 4, 'user2', turnStart);
     expect(r3.status).toBe(StrictTurnStatus.VALID);
+    turnStart = r3.currentTurnStartedAt ?? null;
 
     // user1 turn 2 -> expected!
-    const r4 = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 6, 'user3');
+    const r4 = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 6, 'user3', turnStart);
     expect(r4.status).toBe(StrictTurnStatus.VALID);
+    turnStart = r4.currentTurnStartedAt ?? null;
 
     // user2 turn 2 -> expected!
-    const r5 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 8, 'user1');
+    const r5 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 8, 'user1', turnStart);
     expect(r5.status).toBe(StrictTurnStatus.VALID);
   });
 
   it('handles 15-second turn timeout and skips turn', async () => {
     const now = 1000;
-    await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', now, null);
-    await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 1, 'user1');
+    let turnStart: number | null = null;
+    const res1 = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor Feoktistov',
+      now,
+      null,
+      turnStart
+    );
+    turnStart = res1.currentTurnStartedAt ?? null;
+    const res2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 1, 'user1', turnStart);
+    turnStart = res2.currentTurnStartedAt ?? null;
 
-    // Turn should be user1 next, but 18 seconds pass without user1 moving (> 15s)
-    const resSkip = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user2');
+    // Turn should be user1 next, but 35 seconds pass without user1 moving (so both user1 and user2 time out)
+    const resSkip = await evaluateStrictTurn(
+      'chat1',
+      'user3',
+      'Aleh',
+      now + 35,
+      'user2',
+      turnStart
+    );
     expect(resSkip.status).toBe(StrictTurnStatus.VALID);
     expect(resSkip.skippedPlayers).toBeDefined();
     expect(resSkip.skippedPlayers!.length).toBe(2);
@@ -214,8 +256,11 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: now + 1,
     };
 
-    // User1 times out again (> 15s) -> 3rd skip -> Order 69
-    const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user2');
+    // User1 was expected after User2 played at now + 1. So currentTurnStartedAt = now + 1
+    const turnStart = now + 1;
+
+    // User1 times out again -> 3rd skip -> Order 69 (both time out over 35 seconds)
+    const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 35, 'user2', turnStart);
     expect(res69.status).toBe(StrictTurnStatus.VALID);
     expect(res69.skippedPlayers).toBeDefined();
     expect(res69.skippedPlayers!.length).toBe(2);
@@ -235,7 +280,7 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: 1000,
     };
 
-    const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', 1050, 'user2');
+    const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor Feoktistov', 1050, 'user2', null);
     expect(res.status).toBe(StrictTurnStatus.EXCLUDED);
   });
 
@@ -264,6 +309,7 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
   it('asserts correct shift alignment when a new player joins strict queue', async () => {
     const now = 1000;
+    let turnStart: number | null = now;
     // Set up queue with user1 and user2
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',
@@ -283,8 +329,9 @@ describe('Queue Service (Strict Queue Engine)', () => {
     };
 
     // User3 (Aleh) joins.
-    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 2, 'user1');
+    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 2, 'user1', turnStart);
     expect(res.status).toBe(StrictTurnStatus.VALID);
+    turnStart = res.currentTurnStartedAt ?? null;
 
     // Verify User3 is inserted after User1 (the last player who played, turnOrder = 1)
     // So User3 should get turnOrder = 2, and User2 should shift to turnOrder = 3
@@ -294,7 +341,14 @@ describe('Queue Service (Strict Queue Engine)', () => {
     // Now evaluate who is expected next.
     // Last player who played is User3 (lastTurnAt = 1002, turnOrder = 2).
     // Expected next should be User2 (turnOrder = 3).
-    const nextCheck = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 4, 'user3');
+    const nextCheck = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor',
+      now + 4,
+      'user3',
+      turnStart
+    );
     // User1 should get out of turn warning because it is User2's turn
     expect(nextCheck.status).toBe(StrictTurnStatus.OUT_OF_TURN_WARNING);
     expect(nextCheck.expectedUserDisplayName).toBe('Pasha');
@@ -302,6 +356,7 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
   it('handles multiple skipped players when a new player joins after a long delay', async () => {
     const now = 1000;
+    let turnStart: number | null = now;
     // Setup player1 and player2 in queue
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',
@@ -320,8 +375,8 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: now - 5,
     };
 
-    // 25 seconds pass. Both user1 and user2 should time out when user3 joins.
-    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 25, 'user1');
+    // 35 seconds pass. Both user1 and user2 should time out when user3 joins.
+    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 35, 'user1', turnStart);
     expect(res.status).toBe(StrictTurnStatus.VALID);
     expect(res.skippedPlayers).toBeDefined();
     expect(res.skippedPlayers!.length).toBe(2);
@@ -329,5 +384,40 @@ describe('Queue Service (Strict Queue Engine)', () => {
     expect(res.skippedPlayers![0].isExcluded).toBe(false);
     expect(res.skippedPlayers![1].displayName).toBe('Yegor Feoktistov');
     expect(res.skippedPlayers![1].isExcluded).toBe(false);
+  });
+
+  it('resets consecutive move restriction when turn changes due to timeout skips', async () => {
+    const now = 1000;
+    let turnStart: number | null = now;
+
+    // Setup player1 and player2
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now - 5,
+    };
+
+    // user1 played last (lastUserId = 'user1').
+    // Over 15 seconds pass (now + 20), user2 times out.
+    // Turn wraps back to user1. Since skips occurred, user1 is expected and should be allowed to play!
+    const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 20, 'user1', turnStart);
+
+    // Check that user1's roll is valid and skips were processed, and lastUserId is reset to null
+    expect(res.status).toBe(StrictTurnStatus.VALID);
+    expect(res.skippedPlayers).toBeDefined();
+    expect(res.skippedPlayers!.length).toBe(1);
+    expect(res.skippedPlayers![0].displayName).toBe('Pasha');
+    expect(res.lastUserId).toBeNull();
   });
 });
