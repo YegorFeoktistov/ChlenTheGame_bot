@@ -245,7 +245,11 @@ export default async function (message: TelegramMessage) {
           chat_id: chatId,
           text: `Обнаружен натурал - ${skipped.displayName}! Выполнить Приказ 69!`,
         });
-        if (skipped.nextUserMention && res.status !== CommandStatus.ALL_EXCLUDED) {
+        if (
+          skipped.nextUserMention &&
+          res.status !== CommandStatus.ALL_EXCLUDED &&
+          res.status !== CommandStatus.SINGLE_PLAYER_WIN
+        ) {
           await api.sendMessage({
             chat_id: chatId,
             text: `Ход переходит к ${skipped.nextUserMention}.`,
@@ -267,6 +271,26 @@ export default async function (message: TelegramMessage) {
       chat_id: chatId,
       text: 'Натуралам вход закрыт!',
       reply_to_message_id: message.message_id,
+    });
+    return;
+  }
+
+  if (res.status === CommandStatus.SOLE_PLAYER_TIMEOUT) {
+    await api.sendMessage({
+      chat_id: chatId,
+      text: 'Никто не осмелился сыграть с тобой в Член. Игра окончена.',
+    });
+    return;
+  }
+
+  if (res.status === CommandStatus.SINGLE_PLAYER_WIN) {
+    const turnStr = pluralizeTurns(res.turns || 0);
+    const recordMsg = res.newRecord ? ' (Новый рекорд! 🚀)' : '';
+    await api.sendMessage({
+      chat_id: chatId,
+      text:
+        `Член - игра окончена! Победитель - ${res.winnerName}\n` +
+        `Игра длилась ${turnStr}${recordMsg}`,
     });
     return;
   }

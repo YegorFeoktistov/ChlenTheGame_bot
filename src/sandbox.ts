@@ -2,10 +2,11 @@ process.env.REPL_MODE = 'true';
 
 import readline from 'readline';
 import { db } from './adapters/db.js';
-import { users, chats } from './schema.js';
+import { users, chats, chatGameSessions } from './schema.js';
 import messageHandler from './handlers/message.js';
 import type { UserRecord } from './types/models.js';
 import { processTurnTimeout } from './services/timer.service.js';
+import { TURN_TIMEOUT_SECONDS } from './utils/constants.js';
 
 const nameToUser = new Map<string, UserRecord>();
 let currentChatId = 'chat_test';
@@ -141,6 +142,24 @@ async function startSandbox() {
       } else if (cmd === ':timeout') {
         console.log(`\x1b[33m⏳ Симулируем таймаут для чата ${currentChatId}...\x1b[0m`);
         try {
+          // Shift session turn start time backwards so the timeout condition triggers immediately
+          const nowUnix = Math.floor(Date.now() / 1000);
+          const fakeStart = nowUnix - TURN_TIMEOUT_SECONDS - 1;
+          await db
+            .insert(chatGameSessions)
+            .values({
+              chatId: currentChatId,
+              isActive: 1,
+              lastUserId: null,
+              sessionMessagesCount: 0,
+              sessionEndedAt: null,
+              currentTurnStartedAt: fakeStart,
+            })
+            .onConflictDoUpdate({
+              target: chatGameSessions.chatId,
+              set: { currentTurnStartedAt: fakeStart },
+            })
+            .run();
           await processTurnTimeout(currentChatId);
         } catch (err) {
           console.error('\x1b[31mОшибка во время симуляции таймаута:\x1b[0m', err);

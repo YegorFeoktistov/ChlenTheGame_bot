@@ -25,6 +25,8 @@ export enum CommandStatus {
   TURN_SKIPPED = 'turn_skipped',
   ORDER_69 = 'order_69',
   ALL_EXCLUDED = 'all_excluded',
+  SOLE_PLAYER_TIMEOUT = 'sole_player_timeout',
+  SINGLE_PLAYER_WIN = 'single_player_win',
 }
 
 export enum StrictTurnStatus {
@@ -34,6 +36,8 @@ export enum StrictTurnStatus {
   TURN_SKIPPED = 'turn_skipped',
   ORDER_69 = 'order_69',
   ALL_EXCLUDED = 'all_excluded',
+  SOLE_PLAYER_TIMEOUT = 'sole_player_timeout',
+  SINGLE_PLAYER_WIN = 'single_player_win',
 }
 
 export const GAME_WIN_CHANCE = 0.1;

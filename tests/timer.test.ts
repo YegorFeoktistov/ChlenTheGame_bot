@@ -191,7 +191,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastUserId: 'user2',
       sessionMessagesCount: 2,
       sessionEndedAt: null,
-      currentTurnStartedAt: now + 1,
+      currentTurnStartedAt: now + 2,
     };
     mockQueuePlayers['chat1_user1'] = {
       chatId: 'chat1',
@@ -208,6 +208,14 @@ describe('Timer Service & Session Abort Engine', () => {
       skipCount: 0,
       isExcluded: 0,
       lastTurnAt: now + 1,
+    };
+    mockQueuePlayers['chat1_user3'] = {
+      chatId: 'chat1',
+      userId: 'user3',
+      turnOrder: 3,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now + 2,
     };
 
     vi.setSystemTime((now + 20) * 1000);
@@ -263,5 +271,68 @@ describe('Timer Service & Session Abort Engine', () => {
 
     // Verify that player1 did NOT get skipped (skipCount remains 0)
     expect(mockQueuePlayers['chat1_user1']?.skipCount).toBe(0);
+  });
+
+  it('handles SOLE_PLAYER_TIMEOUT in processTurnTimeout and terminates game session', async () => {
+    const now = 1000;
+    mockGameSessions['chat1'] = {
+      chatId: 'chat1',
+      isActive: 1,
+      lastUserId: null,
+      sessionMessagesCount: 1,
+      sessionEndedAt: null,
+      currentTurnStartedAt: now,
+    };
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+
+    vi.setSystemTime((now + 20) * 1000);
+    await processTurnTimeout('chat1');
+
+    // Game should terminate because user1 was the only player and timed out
+    expect(mockGameSessions['chat1']?.isActive).toBe(0);
+    expect(Object.keys(mockQueuePlayers).length).toBe(0);
+  });
+
+  it('handles SINGLE_PLAYER_WIN in processTurnTimeout and records automatic win', async () => {
+    const now = 1000;
+    mockGameSessions['chat1'] = {
+      chatId: 'chat1',
+      isActive: 1,
+      lastUserId: 'user2',
+      sessionMessagesCount: 5,
+      sessionEndedAt: null,
+      currentTurnStartedAt: now,
+    };
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 2, // 3rd skip -> excluded
+      isExcluded: 0,
+      lastTurnAt: now - 5,
+    };
+
+    vi.setSystemTime((now + 20) * 1000);
+    await processTurnTimeout('chat1');
+
+    // user2 times out and is excluded -> only user1 remains -> user1 gets automatic win
+    expect(mockGameSessions['chat1']?.isActive).toBe(0);
+    expect(Object.keys(mockQueuePlayers).length).toBe(0); // queue is cleared on win
+    expect(mockGameSessions['chat1']?.lastUserId).toBeNull();
   });
 });
