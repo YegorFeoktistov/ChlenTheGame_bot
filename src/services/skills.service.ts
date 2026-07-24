@@ -4,7 +4,7 @@ import { eq, and } from 'sdk/db';
 import { CHLEN_CLASS_SKILLS, ChlenClass, StatusEffectId } from '../utils/constants.js';
 import type { SkillUserRecord, UserRecord } from '../types/models.js';
 import { addStatusEffect } from './statusEffects.service.js';
-import { formatDisplayName } from './user.service.js';
+import { formatDisplayName, cleanUsername } from './user.service.js';
 
 export async function getUserSkillText(
   chatId: string,
@@ -60,7 +60,7 @@ export async function applyWeaknessToTarget(
   let targetUserId: string | null = null;
 
   if (targetText.startsWith('@')) {
-    const username = targetText.replace(/^@+/, '').toLowerCase();
+    const username = cleanUsername(targetText).toLowerCase();
     const userRows = (await db
       .select()
       .from(users)

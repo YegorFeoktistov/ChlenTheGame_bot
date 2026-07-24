@@ -10,7 +10,11 @@ import type {
   QueuePlayerRecord,
   UserRecord,
 } from '../src/types/models.js';
-import { CommandStatus } from '../src/utils/constants.js';
+import {
+  CommandStatus,
+  GAME_WIN_CHANCE,
+  SESSION_COOLDOWN_SECONDS,
+} from '../src/utils/constants.js';
 
 let mockGameSessions: Record<string, GameSessionRecord> = {};
 let mockUserStats: Record<string, UserStatRecord> = {};
@@ -161,7 +165,7 @@ describe('Game Engine Service', () => {
   });
 
   it('prevents winning on turn 1 of a new session or on player first move', async () => {
-    const res = await handleGameCommand('chat1', 'user1', 'Pasha', 0.05); // Winning roll (5%)
+    const res = await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE - 0.0001); // Winning roll
     expect(res.status).toBe(CommandStatus.SUCCESS);
     expect(res.gameStarted).toBe(true);
     expect(res.gameEnded).toBe(false);
@@ -187,11 +191,15 @@ describe('Game Engine Service', () => {
     // Turn 2 by user2 (Yegor 1st move)
     await handleGameCommand('chat1', 'user2', 'Yegor', 0.5);
     // Turn 3 by user1 (Pasha 2nd move with winning roll -> game ends)
-    await handleGameCommand('chat1', 'user1', 'Pasha', 0.05);
+    await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE - 0.0001);
 
-    // Attempt to start a new game immediately -> cooldown
+    // Attempt to start a new game immediately -> cooldown (if set)
     const res = await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
-    expect(res.status).toBe(CommandStatus.SESSION_COOLDOWN);
+    if (SESSION_COOLDOWN_SECONDS > 0) {
+      expect(res.status).toBe(CommandStatus.SESSION_COOLDOWN);
+    } else {
+      expect(res.status).toBe(CommandStatus.SUCCESS);
+    }
   });
 
   it('updates stats and sets longest record on game win', async () => {
@@ -200,7 +208,7 @@ describe('Game Engine Service', () => {
     // Turn 2 (Yegor - 1st move)
     await handleGameCommand('chat1', 'user2', 'Yegor', 0.5);
     // Turn 3 (Pasha - 2nd move - winning roll)
-    const winRes = await handleGameCommand('chat1', 'user1', 'Pasha', 0.05);
+    const winRes = await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE - 0.0001);
 
     expect(winRes.status).toBe(CommandStatus.SUCCESS);
     expect(winRes.gameEnded).toBe(true);
@@ -231,8 +239,13 @@ describe('Game Engine Service', () => {
     expect(res4.status).toBe(CommandStatus.SUCCESS);
     expect(res4.gameEnded).toBe(false);
 
-    // Turn 5: User 2 makes their 2nd move with winning roll (5%) -> MUST WIN!
-    const res5 = await handleGameCommand('chat1', 'user2', 'SecondPerson', 0.05);
+    // Turn 5: User 2 makes their 2nd move with winning roll -> MUST WIN!
+    const res5 = await handleGameCommand(
+      'chat1',
+      'user2',
+      'SecondPerson',
+      GAME_WIN_CHANCE - 0.0001
+    );
     expect(res5.status).toBe(CommandStatus.SUCCESS);
     expect(res5.gameEnded).toBe(true);
     expect(res5.winnerName).toBe('SecondPerson');
@@ -277,8 +290,8 @@ describe('Game Engine Service', () => {
     // Turn 1 (Pasha - 1st move)
     await handleGameCommand('chat1', 'user1', 'Pasha', 0.5);
 
-    // Turn 2 (Yegor joins - 1st move with winning roll 5%) -> CANNOT WIN IN NON-STRICT MODE
-    const yegorRes1 = await handleGameCommand('chat1', 'user2', 'Yegor', 0.05);
+    // Turn 2 (Yegor joins - 1st move with winning roll) -> CANNOT WIN IN NON-STRICT MODE
+    const yegorRes1 = await handleGameCommand('chat1', 'user2', 'Yegor', GAME_WIN_CHANCE - 0.0001);
     expect(yegorRes1.status).toBe(CommandStatus.SUCCESS);
     expect(yegorRes1.gameEnded).toBe(false);
     expect(yegorRes1.outcome).toBe('Член');

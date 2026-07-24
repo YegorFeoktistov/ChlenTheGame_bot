@@ -1,12 +1,13 @@
-import { api, db } from 'sdk';
-import { chatGameSessions, chatSkillUsers } from '../schema.js';
+import { db } from 'sdk';
+import { chatGameSessions } from '../schema.js';
 import { eq } from 'sdk/db';
 import type { GameSessionRecord } from '../types/models.js';
 import { StrictTurnStatus, TURN_TIMEOUT_MS } from '../utils/constants.js';
-import { getQueueMode, evaluateStrictTurnTimeout, clearQueueSession } from './queue.service.js';
+import { getQueueMode, evaluateStrictTurnTimeout } from './queue.service.js';
 import { withChatLock } from '../utils/mutex.js';
 import { recordAutomaticWin } from './game_rules.js';
-import { pluralizeTurns } from '../utils/pluralize.js';
+import { terminateGameSession } from './game.service.js';
+import { sendSkipNotifications, sendGameEndNotification } from './notification.service.js';
 
 export const activeTimers = new Map<string, NodeJS.Timeout>();
 export const activeTimerIds = new Map<string, number>();
@@ -52,68 +53,20 @@ export async function processTurnTimeout(chatId: string, myId?: number): Promise
 
       // Notify the chat about any skipped/excluded players
       if (res.skippedPlayers && res.skippedPlayers.length > 0) {
-        for (const skipped of res.skippedPlayers) {
-          if (skipped.isExcluded) {
-            await api.sendMessage({
-              chat_id: chatId,
-              text: `Обнаружен натурал - ${skipped.displayName}! Выполнить Приказ 69!`,
-            });
-            if (skipped.nextUserMention && res.status !== StrictTurnStatus.ALL_EXCLUDED) {
-              await api.sendMessage({
-                chat_id: chatId,
-                text: `Ход переходит к ${skipped.nextUserMention}.`,
-              });
-            }
-          } else {
-            if (skipped.nextUserMention) {
-              await api.sendMessage({
-                chat_id: chatId,
-                text: `${skipped.displayName} - ты обронил Член!\nСледующим ходит ${skipped.nextUserMention}.`,
-              });
-            }
-          }
-        }
+        await sendSkipNotifications(
+          chatId,
+          res.skippedPlayers,
+          res.status === StrictTurnStatus.ALL_EXCLUDED
+        );
       }
 
       if (res.status === StrictTurnStatus.SOLE_PLAYER_TIMEOUT) {
-        clearTurnTimeout(chatId);
-
-        await api.sendMessage({
-          chat_id: chatId,
-          text: 'Никто не осмелился сыграть с тобой в Член. Игра окончена.',
-        });
-
-        const nowUnix = Math.floor(Date.now() / 1000);
-        await db
-          .insert(chatGameSessions)
-          .values({
-            chatId,
-            isActive: 0,
-            lastUserId: null,
-            sessionMessagesCount: 0,
-            sessionEndedAt: nowUnix,
-            currentTurnStartedAt: null,
-          })
-          .onConflictDoUpdate({
-            target: chatGameSessions.chatId,
-            set: {
-              isActive: 0,
-              lastUserId: null,
-              sessionMessagesCount: 0,
-              sessionEndedAt: nowUnix,
-              currentTurnStartedAt: null,
-            },
-          })
-          .run();
-
-        await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
-        await clearQueueSession(chatId);
+        await terminateGameSession(chatId);
+        await sendGameEndNotification(chatId, res.status);
         return;
       }
 
       if (res.status === StrictTurnStatus.SINGLE_PLAYER_WIN) {
-        clearTurnTimeout(chatId);
-
         const nowUnix = Math.floor(Date.now() / 1000);
         const sessionRows = (await db
           .select()
@@ -131,50 +84,21 @@ export async function processTurnTimeout(chatId: string, myId?: number): Promise
           nowUnix,
           turnsCount
         );
+        await terminateGameSession(chatId, nowUnix);
 
-        const turnStr = pluralizeTurns(winDetails.turns);
-        const recordMsg = winDetails.newRecord ? ' (Новый рекорд! 🚀)' : '';
-        await api.sendMessage({
-          chat_id: chatId,
-          text:
-            `Член - игра окончена! Победитель - ${res.winnerName}\n` +
-            `Игра длилась ${turnStr}${recordMsg}`,
-        });
+        await sendGameEndNotification(
+          chatId,
+          res.status,
+          res.winnerName,
+          winDetails.turns,
+          winDetails.newRecord
+        );
         return;
       }
 
       if (res.status === StrictTurnStatus.ALL_EXCLUDED) {
-        clearTurnTimeout(chatId);
-
-        await api.sendMessage({
-          chat_id: chatId,
-          text: 'Все участники признаны натуралами! Вы расстроили Член. Игра окончена.',
-        });
-
-        const nowUnix = Math.floor(Date.now() / 1000);
-        await db
-          .insert(chatGameSessions)
-          .values({
-            chatId,
-            isActive: 0,
-            lastUserId: null,
-            sessionMessagesCount: 0,
-            sessionEndedAt: nowUnix,
-            currentTurnStartedAt: null,
-          })
-          .onConflictDoUpdate({
-            target: chatGameSessions.chatId,
-            set: {
-              isActive: 0,
-              lastUserId: null,
-              sessionMessagesCount: 0,
-              sessionEndedAt: nowUnix,
-              currentTurnStartedAt: null,
-            },
-          })
-          .run();
-
-        await clearQueueSession(chatId);
+        await terminateGameSession(chatId);
+        await sendGameEndNotification(chatId, res.status);
         return;
       }
 

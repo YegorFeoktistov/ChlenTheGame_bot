@@ -8,7 +8,7 @@ import {
   registerNonStrictPlayer,
 } from '../src/services/queue.service.js';
 import type { ChatRecord, QueuePlayerRecord, UserRecord } from '../src/types/models.js';
-import { StrictTurnStatus } from '../src/utils/constants.js';
+import { StrictTurnStatus, TURN_TIMEOUT_SECONDS } from '../src/utils/constants.js';
 
 let mockChats: Record<string, ChatRecord> = {};
 let mockQueuePlayers: Record<string, QueuePlayerRecord> = {};
@@ -218,12 +218,12 @@ describe('Queue Service (Strict Queue Engine)', () => {
     const res2 = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 1, 'user1', turnStart);
     turnStart = res2.currentTurnStartedAt ?? null;
 
-    // Turn should be user1 next, but 35 seconds pass without user1 moving (so both user1 and user2 time out)
+    // Turn should be user1 next, but enough time passes without user1 moving (so both user1 and user2 time out)
     const resSkip = await evaluateStrictTurn(
       'chat1',
       'user3',
       'Aleh',
-      now + 35,
+      now + 2 * TURN_TIMEOUT_SECONDS + 5,
       'user2',
       turnStart
     );
@@ -267,8 +267,15 @@ describe('Queue Service (Strict Queue Engine)', () => {
     // User1 was expected after User4 played at now + 2. So currentTurnStartedAt = now + 2
     const turnStart = now + 2;
 
-    // User1 times out again -> 3rd skip -> Order 69 (both time out over 35 seconds)
-    const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 35, 'user2', turnStart);
+    // User1 times out again -> 3rd skip -> Order 69 (both time out over limits)
+    const res69 = await evaluateStrictTurn(
+      'chat1',
+      'user3',
+      'Aleh',
+      now + 2 * TURN_TIMEOUT_SECONDS + 5,
+      'user2',
+      turnStart
+    );
     expect(res69.status).toBe(StrictTurnStatus.VALID);
     expect(res69.skippedPlayers).toBeDefined();
     expect(res69.skippedPlayers!.length).toBe(2);
@@ -383,8 +390,15 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: now - 5,
     };
 
-    // 35 seconds pass. Both user1 and user2 should time out when user3 joins.
-    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 35, 'user1', turnStart);
+    // Enough time passes. Both user1 and user2 should time out when user3 joins.
+    const res = await evaluateStrictTurn(
+      'chat1',
+      'user3',
+      'Aleh',
+      now + 2 * TURN_TIMEOUT_SECONDS + 5,
+      'user1',
+      turnStart
+    );
     expect(res.status).toBe(StrictTurnStatus.VALID);
     expect(res.skippedPlayers).toBeDefined();
     expect(res.skippedPlayers!.length).toBe(2);
@@ -416,10 +430,16 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: now - 5,
     };
 
-    // user1 played last (lastUserId = 'user1').
-    // Over 15 seconds pass (now + 20), user2 times out.
+    // Over timeout passes, user2 times out.
     // Turn wraps back to user1. Since skips occurred, user1 is expected and should be allowed to play!
-    const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 20, 'user1', turnStart);
+    const res = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor',
+      now + TURN_TIMEOUT_SECONDS + 5,
+      'user1',
+      turnStart
+    );
 
     // Check that user1's roll is valid and skips were processed, and lastUserId is reset to null
     expect(res.status).toBe(StrictTurnStatus.VALID);
@@ -440,9 +460,16 @@ describe('Queue Service (Strict Queue Engine)', () => {
       lastTurnAt: now,
     };
 
-    // User2 (who is not in the queue) attempts to roll out of turn after 20 seconds.
+    // User2 (who is not in the queue) attempts to roll out of turn.
     // The sole expected player (user1) times out, and since they are the only player, it triggers SOLE_PLAYER_TIMEOUT.
-    const res = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 20, null, now);
+    const res = await evaluateStrictTurn(
+      'chat1',
+      'user2',
+      'Pasha',
+      now + TURN_TIMEOUT_SECONDS + 5,
+      null,
+      now
+    );
     expect(res.status).toBe(StrictTurnStatus.SOLE_PLAYER_TIMEOUT);
   });
 
@@ -467,7 +494,14 @@ describe('Queue Service (Strict Queue Engine)', () => {
 
     // expected player user2 times out. Once excluded, only user1 remains.
     // user1 (who is rolling now) should trigger SINGLE_PLAYER_WIN.
-    const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 20, null, now);
+    const res = await evaluateStrictTurn(
+      'chat1',
+      'user1',
+      'Yegor',
+      now + TURN_TIMEOUT_SECONDS + 5,
+      null,
+      now
+    );
     expect(res.status).toBe(StrictTurnStatus.SINGLE_PLAYER_WIN);
     expect(res.winnerId).toBe('user1');
     expect(res.winnerName).toBe('Yegor Feoktistov');
@@ -517,7 +551,14 @@ describe('Queue Service (Strict Queue Engine)', () => {
         }) as any
     );
 
-    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user1', now);
+    const res = await evaluateStrictTurn(
+      'chat1',
+      'user3',
+      'Aleh',
+      now + TURN_TIMEOUT_SECONDS + 5,
+      'user1',
+      now
+    );
     expect(res.status).toBe(StrictTurnStatus.ALL_EXCLUDED);
   });
 

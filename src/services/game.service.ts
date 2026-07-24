@@ -12,6 +12,7 @@ import {
   StrictTurnStatus,
   StatusEffectId,
   SESSION_COOLDOWN_SECONDS,
+  GAME_WIN_CHANCE,
 } from '../utils/constants.js';
 import { getStatusEffects } from './statusEffects.service.js';
 import {
@@ -67,6 +68,38 @@ async function handleOutOfTurnWarning(chatId: string, userId: string): Promise<C
   return { status: CommandStatus.WARNING };
 }
 
+export async function terminateGameSession(
+  chatId: string,
+  nowUnix = Math.floor(Date.now() / 1000)
+): Promise<void> {
+  await db
+    .insert(chatGameSessions)
+    .values({
+      chatId,
+      isActive: 0,
+      lastUserId: null,
+      sessionMessagesCount: 0,
+      sessionEndedAt: nowUnix,
+      currentTurnStartedAt: null,
+    })
+    .onConflictDoUpdate({
+      target: chatGameSessions.chatId,
+      set: {
+        isActive: 0,
+        lastUserId: null,
+        sessionMessagesCount: 0,
+        sessionEndedAt: nowUnix,
+        currentTurnStartedAt: null,
+      },
+    })
+    .run();
+
+  await clearQueueSession(chatId);
+  await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+  await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
+  clearTurnTimeout(chatId);
+}
+
 export async function abortGameSession(chatId: string): Promise<{ wasActive: boolean }> {
   const sessionRows = (await db
     .select()
@@ -81,30 +114,7 @@ export async function abortGameSession(chatId: string): Promise<{ wasActive: boo
   }
 
   const nowUnix = Math.floor(Date.now() / 1000);
-
-  await db
-    .insert(chatGameSessions)
-    .values({
-      chatId,
-      isActive: 0,
-      lastUserId: null,
-      sessionMessagesCount: 0,
-      sessionEndedAt: nowUnix,
-    })
-    .onConflictDoUpdate({
-      target: chatGameSessions.chatId,
-      set: {
-        isActive: 0,
-        lastUserId: null,
-        sessionEndedAt: nowUnix,
-      },
-    })
-    .run();
-
-  await clearQueueSession(chatId);
-  await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
-  await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
-  clearTurnTimeout(chatId);
+  await terminateGameSession(chatId, nowUnix);
 
   return { wasActive: true };
 }
@@ -188,31 +198,7 @@ export async function handleGameCommand(
     }
 
     if (strictRes.status === StrictTurnStatus.SOLE_PLAYER_TIMEOUT) {
-      await db
-        .insert(chatGameSessions)
-        .values({
-          chatId,
-          isActive: 0,
-          lastUserId: null,
-          sessionMessagesCount: 0,
-          sessionEndedAt: nowUnix,
-          currentTurnStartedAt: null,
-        })
-        .onConflictDoUpdate({
-          target: chatGameSessions.chatId,
-          set: {
-            isActive: 0,
-            lastUserId: null,
-            sessionMessagesCount: 0,
-            sessionEndedAt: nowUnix,
-            currentTurnStartedAt: null,
-          },
-        })
-        .run();
-
-      await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
-      await clearQueueSession(chatId);
-      clearTurnTimeout(chatId);
+      await terminateGameSession(chatId, nowUnix);
 
       return {
         status: CommandStatus.SOLE_PLAYER_TIMEOUT,
@@ -220,7 +206,6 @@ export async function handleGameCommand(
     }
 
     if (strictRes.status === StrictTurnStatus.SINGLE_PLAYER_WIN) {
-      clearTurnTimeout(chatId);
       const winDetails = await recordAutomaticWin(
         chatId,
         strictRes.winnerId!,
@@ -228,6 +213,7 @@ export async function handleGameCommand(
         nowUnix,
         session.sessionMessagesCount
       );
+      await terminateGameSession(chatId, nowUnix);
 
       return {
         status: CommandStatus.SINGLE_PLAYER_WIN,
@@ -239,30 +225,7 @@ export async function handleGameCommand(
     }
 
     if (strictRes.status === StrictTurnStatus.ALL_EXCLUDED) {
-      await db
-        .insert(chatGameSessions)
-        .values({
-          chatId,
-          isActive: 0,
-          lastUserId: null,
-          sessionMessagesCount: 0,
-          sessionEndedAt: nowUnix,
-          currentTurnStartedAt: null,
-        })
-        .onConflictDoUpdate({
-          target: chatGameSessions.chatId,
-          set: {
-            isActive: 0,
-            lastUserId: null,
-            sessionEndedAt: nowUnix,
-            currentTurnStartedAt: null,
-          },
-        })
-        .run();
-
-      await clearQueueSession(chatId);
-      await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
-      clearTurnTimeout(chatId);
+      await terminateGameSession(chatId, nowUnix);
 
       return {
         status: CommandStatus.ALL_EXCLUDED,
@@ -313,25 +276,20 @@ export async function handleGameCommand(
     outcome = 'Член';
     gameEnded = false;
   } else {
-    const roll = rollOverride !== undefined ? rollOverride : Math.random();
+    const roll =
+      rollOverride !== undefined
+        ? rollOverride
+        : process.env.SIMULATION_NO_WIN === 'true'
+          ? 0.99
+          : Math.random();
     const weaknessEffects = await getStatusEffects(chatId, userId);
     const weaknessCount = weaknessEffects
       .filter((e) => e.statusEffectId === StatusEffectId.WEAKNESS)
       .reduce((sum, e) => sum + e.count, 0);
-    const winChance = 0.1 / Math.pow(2, weaknessCount);
+    const winChance = GAME_WIN_CHANCE / Math.pow(2, weaknessCount);
     if (roll < winChance) {
       outcome = 'Я победил';
       gameEnded = true;
-      session.isActive = 0;
-      session.lastUserId = null;
-      session.sessionEndedAt = nowUnix;
-      turns = session.sessionMessagesCount;
-
-      // Reset skill usage, status effects, queue, and timers for next game
-      await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
-      await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
-      await clearQueueSession(chatId);
-      clearTurnTimeout(chatId);
 
       const winDetails = await recordAutomaticWin(
         chatId,
@@ -342,6 +300,7 @@ export async function handleGameCommand(
       );
       newRecord = winDetails.newRecord;
       turns = winDetails.turns;
+      await terminateGameSession(chatId, nowUnix);
     } else {
       outcome = 'Член';
       gameEnded = false;

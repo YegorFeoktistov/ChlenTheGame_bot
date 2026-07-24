@@ -1,8 +1,7 @@
 import { db } from 'sdk';
-import { chatGameSessions, chatUserStats, chatLongestSessions, chatSkillUsers } from '../schema.js';
+import { chatUserStats, chatLongestSessions } from '../schema.js';
 import { eq, and } from 'sdk/db';
 import type { UserStatRecord, LongestSessionRecord } from '../types/models.js';
-import { clearQueueSession } from './queue.service.js';
 
 export interface WinResult {
   newRecord: boolean;
@@ -90,33 +89,6 @@ export async function recordAutomaticWin(
       })
       .run();
   }
-
-  // 3. Reset skill usage and queue
-  await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
-  await clearQueueSession(chatId);
-
-  // 4. Update session to inactive
-  await db
-    .insert(chatGameSessions)
-    .values({
-      chatId,
-      isActive: 0,
-      lastUserId: null,
-      sessionMessagesCount: 0,
-      sessionEndedAt: nowUnix,
-      currentTurnStartedAt: null,
-    })
-    .onConflictDoUpdate({
-      target: chatGameSessions.chatId,
-      set: {
-        isActive: 0,
-        lastUserId: null,
-        sessionMessagesCount: 0,
-        sessionEndedAt: nowUnix,
-        currentTurnStartedAt: null,
-      },
-    })
-    .run();
 
   return { newRecord, turns };
 }
