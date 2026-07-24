@@ -476,4 +476,66 @@ describe('Queue Service (Strict Queue Engine)', () => {
     expect(res.skippedPlayers![0].displayName).toBe('Pasha');
     expect(res.skippedPlayers![0].isExcluded).toBe(true);
   });
+
+  it('triggers ALL_EXCLUDED in evaluateStrictTurn when activeQueue becomes empty during timeout processing', async () => {
+    const now = 1000;
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 2,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now - 5,
+    };
+
+    let queryCount = 0;
+    vi.spyOn(db, 'select').mockImplementation(
+      () =>
+        ({
+          from: (tbl: { name?: string }) => ({
+            where: () => ({
+              run: async () => {
+                queryCount++;
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  if (queryCount > 2) {
+                    return [];
+                  }
+                  return Object.values(mockQueuePlayers);
+                }
+                return [];
+              },
+            }),
+          }),
+        }) as any
+    );
+
+    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user1', now);
+    expect(res.status).toBe(StrictTurnStatus.ALL_EXCLUDED);
+  });
+
+  it('handles joining when no active players have played yet', async () => {
+    const now = 1000;
+    // Setup player1 with null lastTurnAt (registered but has not played)
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: null,
+    };
+
+    // user2 joins. Since player1 has not played yet, it triggers the branch for no active players have played yet.
+    const res = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now, null, null);
+    expect(res.status).toBe(StrictTurnStatus.VALID);
+    expect(mockQueuePlayers['chat1_user2']?.turnOrder).toBe(2);
+  });
 });
