@@ -17,6 +17,10 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           port: ${{ secrets.VM_PORT || 22 }}
           script: |
+            # Load NVM
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
             cd ${{ secrets.VM_PROJECT_PATH }}
             
             # 1. Stop the bot service (closes SQLite connections and flushes WAL to chlenbot.db)

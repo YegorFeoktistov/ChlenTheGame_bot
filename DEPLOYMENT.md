@@ -143,3 +143,11 @@ Go to your repo **Settings** -> **Secrets and variables** -> **Actions** and add
 - `VM_USER`: `ubuntu`
 - `VM_SSH_KEY`: The private key matching the public key added to `authorized_keys`
 - `VM_PROJECT_PATH`: `/home/ubuntu/ChlenTheGameBot`
+
+### D. Manual Deploy / Rebuild on VM
+If you ever need to trigger a manual deploy, rebuild, and restart directly from your local terminal (bypassing GitHub Actions), run:
+```bash
+ssh -i /path/to/key ubuntu@your_server_ip "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && cd ChlenTheGameBot && git pull && sudo systemctl stop chlenbot-node && npm ci && npm run build && sudo systemctl start chlenbot-node"
+```
+*(Note: Loading NVM explicitly is required because non-interactive SSH shells do not load `~/.bashrc`, making `node` and `npm` commands otherwise unavailable).*
+
