@@ -4,13 +4,18 @@ import { eq, and } from 'sdk/db';
 
 import type { SubscriberRecord } from '../types/models.js';
 
+export function cleanUsername(username: string): string {
+  if (!username) return '';
+  return username.replace(/^@+/, '');
+}
+
 export function formatDisplayName(firstName: string, lastName?: string | null): string {
   let name = firstName || 'Игрок';
   if (lastName) {
     name += ` ${lastName}`;
   }
   if (name.startsWith('@')) {
-    name = name.replace(/^@+/, '');
+    name = cleanUsername(name);
   }
   return name.trim();
 }
@@ -66,17 +71,17 @@ export async function subscribeUser(
   userId: string,
   username: string
 ): Promise<void> {
-  const cleanUsername = username.replace(/^@+/, '');
+  const cleaned = cleanUsername(username);
   await db
     .insert(chatSubscribers)
     .values({
       chatId,
       userId,
-      username: cleanUsername,
+      username: cleaned,
     })
     .onConflictDoUpdate({
       target: [chatSubscribers.chatId, chatSubscribers.userId],
-      set: { username: cleanUsername },
+      set: { username: cleaned },
     })
     .run();
 }

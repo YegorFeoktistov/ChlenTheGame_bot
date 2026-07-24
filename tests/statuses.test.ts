@@ -9,7 +9,7 @@ import type {
   QueuePlayerRecord,
   StatusEffectUserRecord,
 } from '../src/types/models.js';
-import { CommandStatus, StatusEffectId } from '../src/utils/constants.js';
+import { CommandStatus, StatusEffectId, GAME_WIN_CHANCE } from '../src/utils/constants.js';
 
 let mockGameSessions: Record<string, GameSessionRecord> = {};
 let mockUserStats: Record<string, UserStatRecord> = {};
@@ -143,7 +143,7 @@ describe('Status Effects', () => {
 
   describe('win chance with "Членослабость" debuff', () => {
     it('gives 10% win chance with 0 debuffs (base)', async () => {
-      const res = await handleGameCommand('chat1', 'user1', 'Pasha', 0.05);
+      const res = await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE / 2);
       expect(res.status).toBe(CommandStatus.SUCCESS);
       expect(res.gameStarted).toBe(true);
       expect(res.gameEnded).toBe(false);
@@ -164,10 +164,8 @@ describe('Status Effects', () => {
       expect(r2.status).toBe(CommandStatus.SUCCESS);
       expect(r2.gameEnded).toBe(false);
 
-      // Turn 3 - User1 makes 2nd move with winning roll (5%)
-      // With 1 debuff, winChance = 0.1 / 2^1 = 0.05, so roll < winChance (0.05 < 0.05) is false
-      // Actually 0.05 is not less than 0.05, so this should NOT win
-      const r3 = await handleGameCommand('chat1', 'user1', 'Pasha', 0.049);
+      // Turn 3 - User1 makes 2nd move with winning roll (with debuff, roll < winChance)
+      const r3 = await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE / 2 - 0.0001);
       expect(r3.status).toBe(CommandStatus.SUCCESS);
       expect(r3.gameEnded).toBe(true);
       expect(r3.winnerName).toBe('Pasha');
@@ -187,9 +185,9 @@ describe('Status Effects', () => {
       const r2 = await handleGameCommand('chat1', 'user2', 'SecondPerson', 0.5);
       expect(r2.status).toBe(CommandStatus.SUCCESS);
 
-      // Turn 3 - User1 with 2 debuffs (winChance = 0.1 / 4 = 0.025)
-      // roll = 0.024 < 0.025 -> should win
-      const r3 = await handleGameCommand('chat1', 'user1', 'Pasha', 0.024);
+      // Turn 3 - User1 with 2 debuffs (winChance = win / 4)
+      // roll < winChance -> should win
+      const r3 = await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE / 4 - 0.0001);
       expect(r3.status).toBe(CommandStatus.SUCCESS);
       expect(r3.gameEnded).toBe(true);
       expect(r3.winnerName).toBe('Pasha');
@@ -207,9 +205,9 @@ describe('Status Effects', () => {
       const r2 = await handleGameCommand('chat1', 'user2', 'SecondPerson', 0.5);
       expect(r2.status).toBe(CommandStatus.SUCCESS);
 
-      // Turn 3 - User1 with 1 debuff (winChance = 0.05)
-      // roll = 0.05 is NOT < 0.05, so should NOT win
-      const r3 = await handleGameCommand('chat1', 'user1', 'Pasha', 0.05);
+      // Turn 3 - User1 with 1 debuff (winChance = win / 2)
+      // roll = winChance is NOT < winChance, so should NOT win
+      const r3 = await handleGameCommand('chat1', 'user1', 'Pasha', GAME_WIN_CHANCE / 2);
       expect(r3.status).toBe(CommandStatus.SUCCESS);
       expect(r3.gameEnded).toBe(false);
       expect(r3.outcome).toBe('Член');

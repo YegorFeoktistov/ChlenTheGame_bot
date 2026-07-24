@@ -3,6 +3,7 @@ import { chatUserStats, chatLongestSessions } from '../schema.js';
 import { eq, desc } from 'sdk/db';
 import { pluralizeWins, pluralizeTurns } from '../utils/pluralize.js';
 import type { UserStatRecord, LongestSessionRecord } from '../types/models.js';
+import { cleanUsername } from './user.service.js';
 
 export async function getLeaderboardText(chatId: string): Promise<string> {
   const rows = (await db
@@ -23,7 +24,7 @@ export async function getLeaderboardText(chatId: string): Promise<string> {
   winners.forEach((user, idx: number) => {
     let name = user.displayName || 'Игрок';
     if (name.startsWith('@')) {
-      name = name.replace(/^@+/, '');
+      name = cleanUsername(name);
     }
     lines.push(`${idx + 1}. ${name} — ${pluralizeWins(user.wins)}`);
   });
@@ -45,7 +46,7 @@ export async function getLongestSessionText(chatId: string): Promise<string> {
   const record = rows[0];
   let winner = record.winnerDisplayName || 'Игрок';
   if (winner.startsWith('@')) {
-    winner = winner.replace(/^@+/, '');
+    winner = cleanUsername(winner);
   }
 
   return (

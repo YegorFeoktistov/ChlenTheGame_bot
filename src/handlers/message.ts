@@ -9,13 +9,18 @@ import {
 import { handleGameCommand, abortGameSession } from '../services/game.service.js';
 import { getLeaderboardText, getLongestSessionText } from '../services/stats.service.js';
 import { getClassesText, setUserClass, getUserClass } from '../services/class.service.js';
-import { pluralizeTurns, pluralizeSeconds } from '../utils/pluralize.js';
+import { pluralizeSeconds } from '../utils/pluralize.js';
 import {
   getUserSkillText,
   recordSkillUsed,
   applyWeaknessToTarget,
 } from '../services/skills.service.js';
 import { getQueueMode, setQueueMode } from '../services/queue.service.js';
+import {
+  sendGameStartNotification,
+  sendSkipNotifications,
+  sendGameEndNotification,
+} from '../services/notification.service.js';
 import { chatGameSessions } from '../schema.js';
 import { eq } from 'sdk/db';
 import { CommandStatus, ChlenClass } from '../utils/constants.js';
@@ -261,34 +266,13 @@ export default async function (message: TelegramMessage) {
   }
 
   const res = await withChatLock(chatId, () => handleGameCommand(chatId, userId, userDisplayName));
-
   // Notify the chat about any skipped/excluded players
   if (res.skippedPlayers && res.skippedPlayers.length > 0) {
-    for (const skipped of res.skippedPlayers) {
-      if (skipped.isExcluded) {
-        await api.sendMessage({
-          chat_id: chatId,
-          text: `Обнаружен натурал - ${skipped.displayName}! Выполнить Приказ 69!`,
-        });
-        if (
-          skipped.nextUserMention &&
-          res.status !== CommandStatus.ALL_EXCLUDED &&
-          res.status !== CommandStatus.SINGLE_PLAYER_WIN
-        ) {
-          await api.sendMessage({
-            chat_id: chatId,
-            text: `Ход переходит к ${skipped.nextUserMention}.`,
-          });
-        }
-      } else {
-        if (skipped.nextUserMention) {
-          await api.sendMessage({
-            chat_id: chatId,
-            text: `${skipped.displayName} - ты обронил Член!\nСледующим ходит ${skipped.nextUserMention}.`,
-          });
-        }
-      }
-    }
+    await sendSkipNotifications(
+      chatId,
+      res.skippedPlayers,
+      res.status === CommandStatus.ALL_EXCLUDED || res.status === CommandStatus.SINGLE_PLAYER_WIN
+    );
   }
 
   if (res.status === CommandStatus.EXCLUDED) {
@@ -301,30 +285,17 @@ export default async function (message: TelegramMessage) {
   }
 
   if (res.status === CommandStatus.SOLE_PLAYER_TIMEOUT) {
-    await api.sendMessage({
-      chat_id: chatId,
-      text: 'Никто не осмелился сыграть с тобой в Член. Игра окончена.',
-    });
+    await sendGameEndNotification(chatId, res.status);
     return;
   }
 
   if (res.status === CommandStatus.SINGLE_PLAYER_WIN) {
-    const turnStr = pluralizeTurns(res.turns || 0);
-    const recordMsg = res.newRecord ? ' (Новый рекорд! 🚀)' : '';
-    await api.sendMessage({
-      chat_id: chatId,
-      text:
-        `Член - игра окончена! Победитель - ${res.winnerName}\n` +
-        `Игра длилась ${turnStr}${recordMsg}`,
-    });
+    await sendGameEndNotification(chatId, res.status, res.winnerName, res.turns, res.newRecord);
     return;
   }
 
   if (res.status === CommandStatus.ALL_EXCLUDED) {
-    await api.sendMessage({
-      chat_id: chatId,
-      text: 'Все участники признаны натуралами! Вы расстроили Член. Игра окончена.',
-    });
+    await sendGameEndNotification(chatId, res.status);
     return;
   }
 
@@ -357,13 +328,7 @@ export default async function (message: TelegramMessage) {
   if (res.status === CommandStatus.SUCCESS) {
     if (res.gameStarted) {
       const subs = await getSubscribers(chatId);
-      let subText = '';
-      if (subs && subs.length > 0) {
-        const subList = subs.map((u) => `@${u.replace(/^@+/, '')}`);
-        const verb = subList.length === 1 ? 'лови' : 'ловите';
-        subText = `\n${subList.join(' ')} - ${verb} Член!`;
-      }
-      await api.sendMessage({ chat_id: chatId, text: `Член - игра началась!${subText}` });
+      await sendGameStartNotification(chatId, subs);
     }
 
     const isCommand = rawText.startsWith('/');
@@ -376,14 +341,13 @@ export default async function (message: TelegramMessage) {
     }
 
     if (res.gameEnded) {
-      const turnStr = pluralizeTurns(res.turns || 0);
-      const recordMsg = res.newRecord ? ' (Новый рекорд! 🚀)' : '';
-      await api.sendMessage({
-        chat_id: chatId,
-        text:
-          `Член - игра окончена! Победитель - ${res.winnerName}\n` +
-          `Игра длилась ${turnStr}${recordMsg}`,
-      });
+      await sendGameEndNotification(
+        chatId,
+        'single_player_win',
+        res.winnerName,
+        res.turns,
+        res.newRecord
+      );
     }
   }
 }

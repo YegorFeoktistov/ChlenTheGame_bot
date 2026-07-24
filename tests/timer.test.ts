@@ -9,6 +9,7 @@ import {
 } from '../src/services/timer.service.js';
 import { handleGameCommand, abortGameSession } from '../src/services/game.service.js';
 import type { GameSessionRecord, QueuePlayerRecord, UserRecord } from '../src/types/models.js';
+import { TURN_TIMEOUT_SECONDS, TURN_TIMEOUT_MS } from '../src/utils/constants.js';
 
 let mockGameSessions: Record<string, GameSessionRecord> = {};
 let mockQueuePlayers: Record<string, QueuePlayerRecord> = {};
@@ -100,7 +101,7 @@ describe('Timer Service & Session Abort Engine', () => {
   });
 
   it('schedules and clears turn timers correctly', () => {
-    scheduleTurnTimeout('chat1', 15100);
+    scheduleTurnTimeout('chat1', TURN_TIMEOUT_MS);
     expect(activeTimers.has('chat1')).toBe(true);
 
     clearTurnTimeout('chat1');
@@ -142,7 +143,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastTurnAt: now,
     };
 
-    vi.setSystemTime((now + 20) * 1000);
+    vi.setSystemTime((now + TURN_TIMEOUT_SECONDS + 5) * 1000);
     await processTurnTimeout('chat1');
 
     expect(mockGameSessions['chat1']?.isActive).toBe(0);
@@ -176,7 +177,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastTurnAt: now + 1,
     };
 
-    vi.setSystemTime((now + 20) * 1000);
+    vi.setSystemTime((now + TURN_TIMEOUT_SECONDS + 5) * 1000);
     await processTurnTimeout('chat1');
 
     expect(mockQueuePlayers['chat1_user1']?.skipCount).toBe(1);
@@ -218,7 +219,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastTurnAt: now + 2,
     };
 
-    vi.setSystemTime((now + 20) * 1000);
+    vi.setSystemTime((now + TURN_TIMEOUT_SECONDS + 5) * 1000);
     await processTurnTimeout('chat1');
 
     expect(mockQueuePlayers['chat1_user1']?.isExcluded).toBe(1);
@@ -227,7 +228,7 @@ describe('Timer Service & Session Abort Engine', () => {
 
   it('stops timer if queue mode is not strict (mode === 0)', async () => {
     mockQueueMode = 0;
-    scheduleTurnTimeout('chat1', 15100);
+    scheduleTurnTimeout('chat1', TURN_TIMEOUT_MS);
     expect(activeTimers.has('chat1')).toBe(true);
 
     await processTurnTimeout('chat1');
@@ -251,10 +252,10 @@ describe('Timer Service & Session Abort Engine', () => {
 
   it('ignores stale background timer callbacks after a valid turn resets the sequence', async () => {
     // Schedule a timer (generates ID 1)
-    scheduleTurnTimeout('chat1', 15100);
+    scheduleTurnTimeout('chat1', TURN_TIMEOUT_MS);
 
     // Simulate a turn being made by scheduling a new timer (generates ID 2)
-    scheduleTurnTimeout('chat1', 15100);
+    scheduleTurnTimeout('chat1', TURN_TIMEOUT_MS);
 
     // Attempt to invoke the timeout callback with the STALE timer ID (1)
     mockQueuePlayers['chat1_user1'] = {
@@ -292,7 +293,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastTurnAt: now,
     };
 
-    vi.setSystemTime((now + 20) * 1000);
+    vi.setSystemTime((now + TURN_TIMEOUT_SECONDS + 5) * 1000);
     await processTurnTimeout('chat1');
 
     // Game should terminate because user1 was the only player and timed out
@@ -327,7 +328,7 @@ describe('Timer Service & Session Abort Engine', () => {
       lastTurnAt: now - 5,
     };
 
-    vi.setSystemTime((now + 20) * 1000);
+    vi.setSystemTime((now + TURN_TIMEOUT_SECONDS + 5) * 1000);
     await processTurnTimeout('chat1');
 
     // user2 times out and is excluded -> only user1 remains -> user1 gets automatic win

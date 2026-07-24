@@ -17,7 +17,8 @@
     "prepare": "husky",
     "deploy": "npm run typecheck && npm run lint && npm run test && npm run build && npx tgcloud push",
     "migrate": "npx tgcloud migrate",
-    "sandbox": "tsup && node dist/sandbox.js"
+    "sandbox": "tsup && node dist/sandbox.js",
+    "simulate": "npm run build && node simulations/simulate.js"
   },
   "lint-staged": {
     "src/**/*.ts": [

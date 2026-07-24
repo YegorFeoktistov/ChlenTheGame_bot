@@ -46,6 +46,6 @@ export enum StrictTurnStatus {
 
 export const GAME_WIN_CHANCE = 0.1;
 export const SESSION_COOLDOWN_SECONDS = 10;
-export const TURN_TIMEOUT_SECONDS = 15;
-export const TURN_TIMEOUT_MS = 15100;
+export const TURN_TIMEOUT_SECONDS = 30;
+export const TURN_TIMEOUT_MS = 30100;
 export const MAX_SKIP_COUNT = 3;
