@@ -1,18 +1,7 @@
 import { db } from 'sdk';
-import {
-  chatGameSessions,
-  chatUserStats,
-  chatLongestSessions,
-  chatWarnedUsers,
-  chatSkillUsers,
-} from '../schema.js';
+import { chatGameSessions, chatWarnedUsers, chatSkillUsers } from '../schema.js';
 import { eq, and } from 'sdk/db';
-import type {
-  GameSessionRecord,
-  UserStatRecord,
-  LongestSessionRecord,
-  WarnedUserRecord,
-} from '../types/models.js';
+import type { GameSessionRecord, WarnedUserRecord } from '../types/models.js';
 import {
   CommandStatus,
   StrictTurnStatus,
@@ -26,6 +15,7 @@ import {
   registerNonStrictPlayer,
 } from './queue.service.js';
 import { scheduleTurnTimeout, clearTurnTimeout } from './timer.service.js';
+import { recordAutomaticWin } from './game_rules.js';
 
 export interface CommandResult {
   status: CommandStatus;
@@ -190,6 +180,57 @@ export async function handleGameCommand(
       return { status: CommandStatus.EXCLUDED };
     }
 
+    if (strictRes.status === StrictTurnStatus.SOLE_PLAYER_TIMEOUT) {
+      await db
+        .insert(chatGameSessions)
+        .values({
+          chatId,
+          isActive: 0,
+          lastUserId: null,
+          sessionMessagesCount: 0,
+          sessionEndedAt: nowUnix,
+          currentTurnStartedAt: null,
+        })
+        .onConflictDoUpdate({
+          target: chatGameSessions.chatId,
+          set: {
+            isActive: 0,
+            lastUserId: null,
+            sessionMessagesCount: 0,
+            sessionEndedAt: nowUnix,
+            currentTurnStartedAt: null,
+          },
+        })
+        .run();
+
+      await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+      await clearQueueSession(chatId);
+      clearTurnTimeout(chatId);
+
+      return {
+        status: CommandStatus.SOLE_PLAYER_TIMEOUT,
+      };
+    }
+
+    if (strictRes.status === StrictTurnStatus.SINGLE_PLAYER_WIN) {
+      clearTurnTimeout(chatId);
+      const winDetails = await recordAutomaticWin(
+        chatId,
+        strictRes.winnerId!,
+        strictRes.winnerName!,
+        nowUnix,
+        session.sessionMessagesCount
+      );
+
+      return {
+        status: CommandStatus.SINGLE_PLAYER_WIN,
+        winnerName: strictRes.winnerName,
+        turns: winDetails.turns,
+        newRecord: winDetails.newRecord,
+        skippedPlayers: strictResSkips,
+      };
+    }
+
     if (strictRes.status === StrictTurnStatus.ALL_EXCLUDED) {
       await db
         .insert(chatGameSessions)
@@ -199,6 +240,7 @@ export async function handleGameCommand(
           lastUserId: null,
           sessionMessagesCount: 0,
           sessionEndedAt: nowUnix,
+          currentTurnStartedAt: null,
         })
         .onConflictDoUpdate({
           target: chatGameSessions.chatId,
@@ -206,6 +248,7 @@ export async function handleGameCommand(
             isActive: 0,
             lastUserId: null,
             sessionEndedAt: nowUnix,
+            currentTurnStartedAt: null,
           },
         })
         .run();
@@ -266,115 +309,47 @@ export async function handleGameCommand(
     if (roll < GAME_WIN_CHANCE) {
       outcome = 'Я победил';
       gameEnded = true;
-      session.isActive = 0;
-      session.lastUserId = null;
-      session.sessionEndedAt = nowUnix;
-      turns = session.sessionMessagesCount;
-
-      // Reset skill usage, queue, and timers for next game
-      await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
-      await clearQueueSession(chatId);
       clearTurnTimeout(chatId);
 
-      // Update win count in leaderboard stats
-      const userStatsRows = (await db
-        .select()
-        .from(chatUserStats)
-        .where(and(eq(chatUserStats.chatId, chatId), eq(chatUserStats.userId, userId)))
-        .run()) as UserStatRecord[];
-
-      const currentWins = userStatsRows && userStatsRows.length > 0 ? userStatsRows[0].wins : 0;
-      const classIdx =
-        userStatsRows && userStatsRows.length > 0 ? userStatsRows[0].classIndex : null;
-
-      await db
-        .insert(chatUserStats)
-        .values({
-          chatId,
-          userId,
-          wins: currentWins + 1,
-          displayName: userDisplayName,
-          classIndex: classIdx,
-        })
-        .onConflictDoUpdate({
-          target: [chatUserStats.chatId, chatUserStats.userId],
-          set: {
-            wins: currentWins + 1,
-            displayName: userDisplayName,
-          },
-        })
-        .run();
-
-      // Check and update longest session record
-      const longestRows = (await db
-        .select()
-        .from(chatLongestSessions)
-        .where(eq(chatLongestSessions.chatId, chatId))
-        .run()) as LongestSessionRecord[];
-
-      const longestRecord = longestRows && longestRows.length > 0 ? longestRows[0] : null;
-
-      if (!longestRecord || turns > longestRecord.messagesCount) {
-        newRecord = true;
-        const nowFormatted = new Date()
-          .toLocaleString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Europe/Moscow',
-          })
-          .replace(',', '');
-
-        await db
-          .insert(chatLongestSessions)
-          .values({
-            chatId,
-            messagesCount: turns,
-            winnerId: userId,
-            winnerDisplayName: userDisplayName,
-            endedAt: nowFormatted,
-          })
-          .onConflictDoUpdate({
-            target: chatLongestSessions.chatId,
-            set: {
-              messagesCount: turns,
-              winnerId: userId,
-              winnerDisplayName: userDisplayName,
-              endedAt: nowFormatted,
-            },
-          })
-          .run();
-      }
+      const winDetails = await recordAutomaticWin(
+        chatId,
+        userId,
+        userDisplayName,
+        nowUnix,
+        session.sessionMessagesCount
+      );
+      newRecord = winDetails.newRecord;
+      turns = winDetails.turns;
     } else {
       outcome = 'Член';
       gameEnded = false;
     }
   }
 
-  // Save session state
-  await db
-    .insert(chatGameSessions)
-    .values({
-      chatId,
-      isActive: session.isActive,
-      lastUserId: session.lastUserId,
-      sessionMessagesCount: session.sessionMessagesCount,
-      sessionEndedAt: session.sessionEndedAt,
-      currentTurnStartedAt: session.currentTurnStartedAt,
-    })
-    .onConflictDoUpdate({
-      target: chatGameSessions.chatId,
-      set: {
+  if (!gameEnded) {
+    // Save session state
+    await db
+      .insert(chatGameSessions)
+      .values({
+        chatId,
         isActive: session.isActive,
         lastUserId: session.lastUserId,
         sessionMessagesCount: session.sessionMessagesCount,
         sessionEndedAt: session.sessionEndedAt,
         currentTurnStartedAt: session.currentTurnStartedAt,
-      },
-    })
-    .run();
+      })
+      .onConflictDoUpdate({
+        target: chatGameSessions.chatId,
+        set: {
+          isActive: session.isActive,
+          lastUserId: session.lastUserId,
+          sessionMessagesCount: session.sessionMessagesCount,
+          sessionEndedAt: session.sessionEndedAt,
+          currentTurnStartedAt: session.currentTurnStartedAt,
+        },
+      })
+      .run();
+  }
 
   if (queueMode === 1 && !gameEnded) {
     scheduleTurnTimeout(chatId);

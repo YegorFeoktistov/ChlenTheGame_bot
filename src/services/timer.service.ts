@@ -1,10 +1,12 @@
 import { api, db } from 'sdk';
-import { chatGameSessions } from '../schema.js';
+import { chatGameSessions, chatSkillUsers } from '../schema.js';
 import { eq } from 'sdk/db';
 import type { GameSessionRecord } from '../types/models.js';
 import { StrictTurnStatus, TURN_TIMEOUT_MS } from '../utils/constants.js';
 import { getQueueMode, evaluateStrictTurnTimeout, clearQueueSession } from './queue.service.js';
 import { withChatLock } from '../utils/mutex.js';
+import { recordAutomaticWin } from './game_rules.js';
+import { pluralizeTurns } from '../utils/pluralize.js';
 
 export const activeTimers = new Map<string, NodeJS.Timeout>();
 export const activeTimerIds = new Map<string, number>();
@@ -73,6 +75,74 @@ export async function processTurnTimeout(chatId: string, myId?: number): Promise
         }
       }
 
+      if (res.status === StrictTurnStatus.SOLE_PLAYER_TIMEOUT) {
+        clearTurnTimeout(chatId);
+
+        await api.sendMessage({
+          chat_id: chatId,
+          text: 'Никто не осмелился сыграть с тобой в Член. Игра окончена.',
+        });
+
+        const nowUnix = Math.floor(Date.now() / 1000);
+        await db
+          .insert(chatGameSessions)
+          .values({
+            chatId,
+            isActive: 0,
+            lastUserId: null,
+            sessionMessagesCount: 0,
+            sessionEndedAt: nowUnix,
+            currentTurnStartedAt: null,
+          })
+          .onConflictDoUpdate({
+            target: chatGameSessions.chatId,
+            set: {
+              isActive: 0,
+              lastUserId: null,
+              sessionMessagesCount: 0,
+              sessionEndedAt: nowUnix,
+              currentTurnStartedAt: null,
+            },
+          })
+          .run();
+
+        await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+        await clearQueueSession(chatId);
+        return;
+      }
+
+      if (res.status === StrictTurnStatus.SINGLE_PLAYER_WIN) {
+        clearTurnTimeout(chatId);
+
+        const nowUnix = Math.floor(Date.now() / 1000);
+        const sessionRows = (await db
+          .select()
+          .from(chatGameSessions)
+          .where(eq(chatGameSessions.chatId, chatId))
+          .run()) as GameSessionRecord[];
+
+        const turnsCount =
+          sessionRows && sessionRows.length > 0 ? sessionRows[0].sessionMessagesCount || 0 : 0;
+
+        const winDetails = await recordAutomaticWin(
+          chatId,
+          res.winnerId!,
+          res.winnerName!,
+          nowUnix,
+          turnsCount
+        );
+
+        const turnStr = pluralizeTurns(winDetails.turns);
+        const recordMsg = winDetails.newRecord ? ' (Новый рекорд! 🚀)' : '';
+        await api.sendMessage({
+          chat_id: chatId,
+          text:
+            `Член - игра окончена! Победитель - ${res.winnerName}\n` +
+            `Игра длилась ${turnStr}${recordMsg}`,
+        });
+        return;
+      }
+
       if (res.status === StrictTurnStatus.ALL_EXCLUDED) {
         clearTurnTimeout(chatId);
 
@@ -90,13 +160,16 @@ export async function processTurnTimeout(chatId: string, myId?: number): Promise
             lastUserId: null,
             sessionMessagesCount: 0,
             sessionEndedAt: nowUnix,
+            currentTurnStartedAt: null,
           })
           .onConflictDoUpdate({
             target: chatGameSessions.chatId,
             set: {
               isActive: 0,
               lastUserId: null,
+              sessionMessagesCount: 0,
               sessionEndedAt: nowUnix,
+              currentTurnStartedAt: null,
             },
           })
           .run();

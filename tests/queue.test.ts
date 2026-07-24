@@ -255,9 +255,17 @@ describe('Queue Service (Strict Queue Engine)', () => {
       isExcluded: 0,
       lastTurnAt: now + 1,
     };
+    mockQueuePlayers['chat1_user4'] = {
+      chatId: 'chat1',
+      userId: 'user4',
+      turnOrder: 3,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now + 2,
+    };
 
-    // User1 was expected after User2 played at now + 1. So currentTurnStartedAt = now + 1
-    const turnStart = now + 1;
+    // User1 was expected after User4 played at now + 2. So currentTurnStartedAt = now + 2
+    const turnStart = now + 2;
 
     // User1 times out again -> 3rd skip -> Order 69 (both time out over 35 seconds)
     const res69 = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 35, 'user2', turnStart);
@@ -419,5 +427,115 @@ describe('Queue Service (Strict Queue Engine)', () => {
     expect(res.skippedPlayers!.length).toBe(1);
     expect(res.skippedPlayers![0].displayName).toBe('Pasha');
     expect(res.lastUserId).toBeNull();
+  });
+
+  it('triggers SOLE_PLAYER_TIMEOUT when the game has only 1 player and they time out', async () => {
+    const now = 1000;
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+
+    // User2 (who is not in the queue) attempts to roll out of turn after 20 seconds.
+    // The sole expected player (user1) times out, and since they are the only player, it triggers SOLE_PLAYER_TIMEOUT.
+    const res = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now + 20, null, now);
+    expect(res.status).toBe(StrictTurnStatus.SOLE_PLAYER_TIMEOUT);
+  });
+
+  it('triggers SINGLE_PLAYER_WIN when exclusions leave only 1 active player', async () => {
+    const now = 1000;
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 2, // Next skip excludes them
+      isExcluded: 0,
+      lastTurnAt: now - 5,
+    };
+
+    // expected player user2 times out. Once excluded, only user1 remains.
+    // user1 (who is rolling now) should trigger SINGLE_PLAYER_WIN.
+    const res = await evaluateStrictTurn('chat1', 'user1', 'Yegor', now + 20, null, now);
+    expect(res.status).toBe(StrictTurnStatus.SINGLE_PLAYER_WIN);
+    expect(res.winnerId).toBe('user1');
+    expect(res.winnerName).toBe('Yegor Feoktistov');
+    expect(res.skippedPlayers).toBeDefined();
+    expect(res.skippedPlayers!.length).toBe(1);
+    expect(res.skippedPlayers![0].displayName).toBe('Pasha');
+    expect(res.skippedPlayers![0].isExcluded).toBe(true);
+  });
+
+  it('triggers ALL_EXCLUDED in evaluateStrictTurn when activeQueue becomes empty during timeout processing', async () => {
+    const now = 1000;
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 2,
+      isExcluded: 0,
+      lastTurnAt: now,
+    };
+    mockQueuePlayers['chat1_user2'] = {
+      chatId: 'chat1',
+      userId: 'user2',
+      turnOrder: 2,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: now - 5,
+    };
+
+    let queryCount = 0;
+    vi.spyOn(db, 'select').mockImplementation(
+      () =>
+        ({
+          from: (tbl: { name?: string }) => ({
+            where: () => ({
+              run: async () => {
+                queryCount++;
+                if (tbl && tbl.name === 'chat_queue_players') {
+                  if (queryCount > 2) {
+                    return [];
+                  }
+                  return Object.values(mockQueuePlayers);
+                }
+                return [];
+              },
+            }),
+          }),
+        }) as any
+    );
+
+    const res = await evaluateStrictTurn('chat1', 'user3', 'Aleh', now + 20, 'user1', now);
+    expect(res.status).toBe(StrictTurnStatus.ALL_EXCLUDED);
+  });
+
+  it('handles joining when no active players have played yet', async () => {
+    const now = 1000;
+    // Setup player1 with null lastTurnAt (registered but has not played)
+    mockQueuePlayers['chat1_user1'] = {
+      chatId: 'chat1',
+      userId: 'user1',
+      turnOrder: 1,
+      skipCount: 0,
+      isExcluded: 0,
+      lastTurnAt: null,
+    };
+
+    // user2 joins. Since player1 has not played yet, it triggers the branch for no active players have played yet.
+    const res = await evaluateStrictTurn('chat1', 'user2', 'Pasha', now, null, null);
+    expect(res.status).toBe(StrictTurnStatus.VALID);
+    expect(mockQueuePlayers['chat1_user2']?.turnOrder).toBe(2);
   });
 });

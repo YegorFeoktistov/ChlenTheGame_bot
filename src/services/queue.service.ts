@@ -125,6 +125,8 @@ export interface StrictTurnResult {
   skippedPlayers?: { displayName: string; isExcluded: boolean; nextUserMention?: string }[];
   currentTurnStartedAt?: number;
   lastUserId?: string | null;
+  winnerId?: string;
+  winnerName?: string;
 }
 
 export async function evaluateStrictTurnTimeout(chatId: string): Promise<StrictTurnResult> {
@@ -182,6 +184,13 @@ export async function evaluateStrictTurnTimeout(chatId: string): Promise<StrictT
 
     const elapsed = nowUnix - turnStartAt;
     if (elapsed >= TURN_TIMEOUT_SECONDS) {
+      if (activeQueue.length === 1) {
+        return {
+          status: StrictTurnStatus.SOLE_PLAYER_TIMEOUT,
+          currentTurnStartedAt: turnStartAt,
+        };
+      }
+
       const timeoutAt = turnStartAt + TURN_TIMEOUT_SECONDS;
       turnStartAt = timeoutAt;
 
@@ -215,6 +224,21 @@ export async function evaluateStrictTurnTimeout(chatId: string): Promise<StrictT
       activeQueue = (allQueueRows || [])
         .filter((p) => !p.isExcluded)
         .sort((a, b) => a.turnOrder - b.turnOrder);
+
+      if (activeQueue.length === 1) {
+        skippedPlayers.push({
+          displayName: skippedName,
+          isExcluded: isNowExcluded === 1,
+          nextUserMention: undefined,
+        });
+        return {
+          status: StrictTurnStatus.SINGLE_PLAYER_WIN,
+          winnerId: activeQueue[0].userId,
+          winnerName: await getUserName(activeQueue[0].userId),
+          skippedPlayers,
+          currentTurnStartedAt: turnStartAt,
+        };
+      }
 
       let nextMention = skippedName;
       if (activeQueue.length > 0) {
@@ -363,6 +387,13 @@ export async function evaluateStrictTurn(
     if (expectedPlayer.userId !== userId) {
       const elapsed = nowUnix - turnStartAt;
       if (elapsed >= TURN_TIMEOUT_SECONDS) {
+        if (activeQueue.length === 1) {
+          return {
+            status: StrictTurnStatus.SOLE_PLAYER_TIMEOUT,
+            currentTurnStartedAt: turnStartAt,
+          };
+        }
+
         const timeoutAt = turnStartAt + TURN_TIMEOUT_SECONDS;
         turnStartAt = timeoutAt;
 
@@ -397,6 +428,21 @@ export async function evaluateStrictTurn(
         activeQueue = (allQueueRows || [])
           .filter((p) => !p.isExcluded)
           .sort((a, b) => a.turnOrder - b.turnOrder);
+
+        if (activeQueue.length === 1) {
+          skippedPlayers.push({
+            displayName: skippedName,
+            isExcluded: isNowExcluded === 1,
+            nextUserMention: undefined,
+          });
+          return {
+            status: StrictTurnStatus.SINGLE_PLAYER_WIN,
+            winnerId: activeQueue[0].userId,
+            winnerName: await getUserName(activeQueue[0].userId),
+            skippedPlayers,
+            currentTurnStartedAt: turnStartAt,
+          };
+        }
 
         let nextMention = skippedName;
         if (activeQueue.length > 0) {

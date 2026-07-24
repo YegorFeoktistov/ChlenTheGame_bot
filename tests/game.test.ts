@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { db } from 'sdk';
 import { handleGameCommand } from '../src/services/game.service.js';
+import { recordAutomaticWin } from '../src/services/game_rules.js';
 import type {
   GameSessionRecord,
   UserStatRecord,
@@ -361,5 +362,53 @@ describe('Game Engine Service', () => {
     // Turn 4: User 1 plays -> SUCCESS (since it's a different user)
     const res4 = await handleGameCommand('chat1', 'user1', 'Yegor', 0.5);
     expect(res4.status).toBe(CommandStatus.SUCCESS);
+  });
+
+  describe('recordAutomaticWin helper branch coverage', () => {
+    it('handles updating existing user stats and classIndex', async () => {
+      mockUserStats['chat1_user1'] = {
+        chatId: 'chat1',
+        userId: 'user1',
+        wins: 5,
+        displayName: 'Yegor',
+        classIndex: 2,
+      };
+
+      const winRes = await recordAutomaticWin('chat1', 'user1', 'Yegor New', 2000, 10);
+      expect(winRes.turns).toBe(10);
+      expect(mockUserStats['chat1_user1']?.wins).toBe(6);
+      expect(mockUserStats['chat1_user1']?.displayName).toBe('Yegor New');
+      expect(mockUserStats['chat1_user1']?.classIndex).toBe(2);
+    });
+
+    it('does not update longest session if turns count is not larger than existing record', async () => {
+      mockLongestSessions['chat1'] = {
+        chatId: 'chat1',
+        messagesCount: 15,
+        winnerId: 'user2',
+        winnerDisplayName: 'SecondPerson',
+        endedAt: '17.07.2026 11:13',
+      };
+
+      const winRes = await recordAutomaticWin('chat1', 'user1', 'Yegor', 2000, 10);
+      expect(winRes.newRecord).toBe(false);
+      expect(mockLongestSessions['chat1']?.messagesCount).toBe(15);
+      expect(mockLongestSessions['chat1']?.winnerId).toBe('user2');
+    });
+
+    it('updates longest session if turns count is larger than existing record', async () => {
+      mockLongestSessions['chat1'] = {
+        chatId: 'chat1',
+        messagesCount: 5,
+        winnerId: 'user2',
+        winnerDisplayName: 'SecondPerson',
+        endedAt: '17.07.2026 11:13',
+      };
+
+      const winRes = await recordAutomaticWin('chat1', 'user1', 'Yegor', 2000, 10);
+      expect(winRes.newRecord).toBe(true);
+      expect(mockLongestSessions['chat1']?.messagesCount).toBe(10);
+      expect(mockLongestSessions['chat1']?.winnerId).toBe('user1');
+    });
   });
 });
