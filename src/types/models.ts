@@ -55,6 +55,13 @@ export interface QueuePlayerRecord {
   lastTurnAt: number | null;
 }
 
+export interface StatusEffectUserRecord {
+  chatId: string;
+  userId: string;
+  statusEffectId: string;
+  count: number;
+}
+
 export interface LongestSessionRecord {
   chatId?: string;
   messagesCount: number;

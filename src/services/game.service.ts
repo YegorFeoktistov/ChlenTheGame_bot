@@ -1,13 +1,19 @@
 import { db } from 'sdk';
-import { chatGameSessions, chatWarnedUsers, chatSkillUsers } from '../schema.js';
+import {
+  chatGameSessions,
+  chatWarnedUsers,
+  chatSkillUsers,
+  chatStatusEffectUsers,
+} from '../schema.js';
 import { eq, and } from 'sdk/db';
 import type { GameSessionRecord, WarnedUserRecord } from '../types/models.js';
 import {
   CommandStatus,
   StrictTurnStatus,
-  GAME_WIN_CHANCE,
+  StatusEffectId,
   SESSION_COOLDOWN_SECONDS,
 } from '../utils/constants.js';
+import { getStatusEffects } from './statusEffects.service.js';
 import {
   getQueueMode,
   evaluateStrictTurn,
@@ -97,6 +103,7 @@ export async function abortGameSession(chatId: string): Promise<{ wasActive: boo
 
   await clearQueueSession(chatId);
   await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+  await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
   clearTurnTimeout(chatId);
 
   return { wasActive: true };
@@ -254,6 +261,7 @@ export async function handleGameCommand(
         .run();
 
       await clearQueueSession(chatId);
+      await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
       clearTurnTimeout(chatId);
 
       return {
@@ -306,9 +314,23 @@ export async function handleGameCommand(
     gameEnded = false;
   } else {
     const roll = rollOverride !== undefined ? rollOverride : Math.random();
-    if (roll < GAME_WIN_CHANCE) {
+    const weaknessEffects = await getStatusEffects(chatId, userId);
+    const weaknessCount = weaknessEffects
+      .filter((e) => e.statusEffectId === StatusEffectId.WEAKNESS)
+      .reduce((sum, e) => sum + e.count, 0);
+    const winChance = 0.1 / Math.pow(2, weaknessCount);
+    if (roll < winChance) {
       outcome = 'Я победил';
       gameEnded = true;
+      session.isActive = 0;
+      session.lastUserId = null;
+      session.sessionEndedAt = nowUnix;
+      turns = session.sessionMessagesCount;
+
+      // Reset skill usage, status effects, queue, and timers for next game
+      await db.delete(chatSkillUsers).where(eq(chatSkillUsers.chatId, chatId)).run();
+      await db.delete(chatStatusEffectUsers).where(eq(chatStatusEffectUsers.chatId, chatId)).run();
+      await clearQueueSession(chatId);
       clearTurnTimeout(chatId);
 
       const winDetails = await recordAutomaticWin(

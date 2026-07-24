@@ -1,4 +1,4 @@
-# Член: the Game - Telegram Bot (v1.1.0)
+# Член: the Game - Telegram Bot (v1.1.1)
 
 Modern, high-performance Node.js & TypeScript Telegram Bot for group chats running a fun interactive turn-based luck game.
 
@@ -17,7 +17,7 @@ Modern, high-performance Node.js & TypeScript Telegram Bot for group chats runni
 5. **Aborting Active Games (`/abortchlen`)**:
    - `/abortchlen`: Aborts the active game session immediately (`Вы оборвали Член. Игра окончена.`). If no game is active, replies `Нет активного Члена.`.
 5. **Classes & Skills System**:
-   - `/chlenclasses`: View available game classes (*Членокнижник*, *Членомант*, *Членодин*, *Охотник на Члены*, *Мастер тысячи Членов*).
+   - `/chlenclasses`: View available game classes (*Членокнижник* (наводит Членослабость), *Членомант*, *Членодин*, *Охотник на Члены*, *Мастер тысячи Членов*).
    - `/becomechlen <1-5>`: Choose your game class.
    - `/whichchlen`: View your assigned class.
    - `/chlenskill`: Activate your class ability once per game session.
